@@ -1,0 +1,255 @@
+@page "/"
+
+<PageTitle>Wizard-Punktezähler</PageTitle>
+
+<main class="app-shell">
+    <header class="masthead">
+        <div class="brand-mark" aria-hidden="true">W</div>
+        <div>
+            <p class="eyebrow">Der Punktezähler für eure Runde</p>
+            <h1>Wizard</h1>
+        </div>
+        <span class="edition-tag">30 Jahre</span>
+    </header>
+
+    <section class="game-card" aria-labelledby="page-heading">
+        @if (phase == GamePhase.Setup)
+        {
+            <div class="section-heading">
+                <div>
+                    <p class="step-label">Schritt 1 von 3</p>
+                    <h2 id="page-heading">Wer spielt mit?</h2>
+                    <p class="muted">Namen in Sitzreihenfolge im Uhrzeigersinn eintragen.</p>
+                </div>
+                <span class="round-pill">3–6 Personen</span>
+            </div>
+
+            <div class="player-list">
+                @for (var i = 0; i < players.Count; i++)
+                {
+                    var index = i;
+                    var player = players[index];
+                    <div class="player-row" @key="player">
+                        <span class="seat-number" aria-hidden="true">@(index + 1)</span>
+                        <div class="field">
+                            <label for="player-name-@index">Name von Person @(index + 1)</label>
+                            <input id="player-name-@index" @bind="player.Name" @bind:event="oninput" autocomplete="off" placeholder="Name eingeben" />
+                        </div>
+                        <button class="icon-button" type="button" aria-label="Person @(index + 1) entfernen" @onclick="() => RemovePlayer(index)">×</button>
+                    </div>
+                }
+            </div>
+
+            <button class="secondary-button add-button" type="button" @onclick="AddPlayer" disabled="@(players.Count >= MaxPlayers)">
+                <span aria-hidden="true">＋</span> Person hinzufügen
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(setupError))
+            {
+                <p class="form-error" role="alert">@setupError</p>
+            }
+
+            <div class="rule-note">
+                <span class="note-icon" aria-hidden="true">✦</span>
+                <p><strong>Standardregeln</strong><br />Die Vorhersagesumme darf der Stichzahl entsprechen.</p>
+            </div>
+
+            <button class="primary-button" type="button" @onclick="StartGame">Partie starten <span aria-hidden="true">→</span></button>
+        }
+        else if (phase == GamePhase.Predictions)
+        {
+            <div class="section-heading">
+                <div>
+                    <p class="step-label">Schritt 2 von 3 · Stichrunde 1</p>
+                    <h2 id="page-heading">Vorhersagen</h2>
+                    <p class="muted">Jede Person sagt vor dem ersten Stich null oder einen Stich voraus.</p>
+                </div>
+                <span class="round-pill">1 Stich</span>
+            </div>
+
+            <div class="turn-order" aria-label="Reihenfolge der Vorhersagen">
+                <div class="turn-item"><span class="turn-icon" aria-hidden="true">♛</span><p><span>Geber</span><strong>@players[dealerIndex].Name</strong></p></div>
+                <div class="turn-item"><span class="turn-icon" aria-hidden="true">↻</span><p><span>Vorhersage beginnt bei</span><strong>@players[FirstPredictorIndex].Name</strong></p></div>
+                <div class="turn-item"><span class="turn-icon" aria-hidden="true">♠</span><p><span>Erster Stich beginnt bei</span><strong>@players[FirstPredictorIndex].Name</strong></p></div>
+            </div>
+
+            <div class="prediction-list">
+                @foreach (var entry in PredictionOrder.Select((player, index) => (player, index)))
+                {
+                    <div class="entry-row" @key="entry.player">
+                        <span class="seat-number" aria-hidden="true">@(entry.index + 1)</span>
+                        <label for="prediction-@entry.index">@entry.player.Name</label>
+                        <div class="number-field"><input id="prediction-@entry.index" type="number" min="0" max="@RoundTrickCount" step="1" @bind="entry.player.Prediction" @bind:event="oninput" inputmode="numeric" /><span>Stiche</span></div>
+                    </div>
+                }
+            </div>
+
+            <p class="sum-note">Vorhersagesumme: <strong>@PredictionSum</strong> von @RoundTrickCount Stich. Die Summe darf passen.</p>
+            @if (!string.IsNullOrWhiteSpace(predictionError))
+            {
+                <p class="form-error" role="alert">@predictionError</p>
+            }
+            <button class="primary-button" type="button" @onclick="StartRound">Vorhersagen bestätigen <span aria-hidden="true">→</span></button>
+        }
+        else if (phase == GamePhase.Scoring)
+        {
+            <div class="section-heading">
+                <div>
+                    <p class="step-label">Schritt 3 von 3 · Stichrunde 1</p>
+                    <h2 id="page-heading">Gewonnene Stiche</h2>
+                    <p class="muted">Tragt ein, wer den einen Stich gewonnen hat.</p>
+                </div>
+                <span class="round-pill">1 Stich</span>
+            </div>
+
+            <div class="prediction-list">
+                @foreach (var entry in PredictionOrder.Select((player, index) => (player, index)))
+                {
+                    <div class="entry-row" @key="entry.player">
+                        <span class="seat-number" aria-hidden="true">@(entry.index + 1)</span>
+                        <div class="score-name"><strong>@entry.player.Name</strong><span>Vorhersage: @entry.player.Prediction</span></div>
+                        <div class="number-field"><input id="won-@entry.index" aria-label="Gewonnene Stiche für @entry.player.Name" type="number" min="0" max="@RoundTrickCount" step="1" @bind="entry.player.WonTricks" @bind:event="oninput" inputmode="numeric" /><span>Stiche</span></div>
+                    </div>
+                }
+            </div>
+
+            <p class="sum-note">Gewonnene Stiche: <strong>@WonTrickSum</strong> von @RoundTrickCount.</p>
+            @if (!string.IsNullOrWhiteSpace(scoringError))
+            {
+                <p class="form-error" role="alert">@scoringError</p>
+            }
+            <button class="primary-button" type="button" @onclick="FinishRound">Wertung berechnen <span aria-hidden="true">→</span></button>
+        }
+        else
+        {
+            <div class="section-heading result-heading">
+                <div>
+                    <p class="step-label">Stichrunde 1 abgeschlossen</p>
+                    <h2 id="page-heading">Euer Ergebnis</h2>
+                    <p class="muted">Rundenpunkte und Gesamtpunkte dieser Partie.</p>
+                </div>
+                <span class="success-mark" aria-label="Abgeschlossen">✓</span>
+            </div>
+
+            <div class="results-table-wrap">
+                <table>
+                    <thead><tr><th scope="col">Person</th><th scope="col">Ansage</th><th scope="col">Stiche</th><th scope="col">Runde</th><th scope="col">Gesamt</th></tr></thead>
+                    <tbody>
+                        @foreach (var player in players)
+                        {
+                            <tr>
+                                <th scope="row">@player.Name</th>
+                                <td>@player.Prediction</td>
+                                <td>@player.WonTricks</td>
+                                <td class="points">@Signed(player.RoundPoints)</td>
+                                <td class="points total-points">@Signed(player.RoundPoints)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="scoring-note"><strong>Wertung</strong><span>Exakte Vorhersage: 20 Punkte plus 10 je Stich. Sonst: −10 Punkte je Stich Abweichung.</span></div>
+        }
+    </section>
+
+    <footer class="app-footer">Punkte im Blick. Spielspaß am Tisch.</footer>
+</main>
+
+@code {
+    private const int MinPlayers = 3;
+    private const int MaxPlayers = 6;
+    private const int RoundTrickCount = 1;
+    private readonly List<Participant> players = [new(), new(), new()];
+    private GamePhase phase = GamePhase.Setup;
+    private int dealerIndex;
+    private string setupError = "";
+    private string predictionError = "";
+    private string scoringError = "";
+
+    private int FirstPredictorIndex => (dealerIndex + 1) % players.Count;
+    private IEnumerable<Participant> PredictionOrder => Enumerable.Range(1, players.Count).Select(offset => players[(dealerIndex + offset) % players.Count]);
+    private int PredictionSum => players.Sum(player => player.Prediction ?? 0);
+    private int WonTrickSum => players.Sum(player => player.WonTricks ?? 0);
+
+    private void AddPlayer()
+    {
+        if (players.Count < MaxPlayers)
+            players.Add(new Participant());
+    }
+
+    private void RemovePlayer(int index)
+    {
+        players.RemoveAt(index);
+    }
+
+    private void StartGame()
+    {
+        setupError = "";
+        if (players.Count is < MinPlayers or > MaxPlayers)
+        {
+            setupError = "Für eine Partie braucht ihr drei bis sechs Personen.";
+            return;
+        }
+
+        if (players.Any(player => string.IsNullOrWhiteSpace(player.Name)))
+        {
+            setupError = "Bitte tragt für alle Personen einen Namen ein.";
+            return;
+        }
+
+        foreach (var player in players)
+            player.Name = player.Name.Trim();
+
+        dealerIndex = Random.Shared.Next(players.Count);
+        phase = GamePhase.Predictions;
+    }
+
+    private void StartRound()
+    {
+        predictionError = "";
+        if (players.Any(player => player.Prediction is null || player.Prediction < 0 || player.Prediction > RoundTrickCount))
+        {
+            predictionError = "Jede Vorhersage muss eine ganze Zahl von 0 bis 1 sein.";
+            return;
+        }
+
+        phase = GamePhase.Scoring;
+    }
+
+    private void FinishRound()
+    {
+        scoringError = "";
+        if (players.Any(player => player.WonTricks is null || player.WonTricks < 0 || player.WonTricks > RoundTrickCount))
+        {
+            scoringError = "Die gewonnenen Stiche müssen je Person zwischen 0 und 1 liegen.";
+            return;
+        }
+
+        if (WonTrickSum != RoundTrickCount)
+        {
+            scoringError = $"Die Summe der gewonnenen Stiche muss genau {RoundTrickCount} betragen.";
+            return;
+        }
+
+        foreach (var player in players)
+        {
+            var difference = Math.Abs(player.Prediction!.Value - player.WonTricks!.Value);
+            player.RoundPoints = difference == 0 ? 20 + 10 * player.WonTricks.Value : -10 * difference;
+        }
+
+        phase = GamePhase.Results;
+    }
+
+    private static string Signed(int points) => points > 0 ? $"+{points}" : points.ToString();
+
+    private sealed class Participant
+    {
+        public string Name { get; set; } = "";
+        public int? Prediction { get; set; }
+        public int? WonTricks { get; set; }
+        public int RoundPoints { get; set; }
+    }
+
+    private enum GamePhase { Setup, Predictions, Scoring, Results }
+}

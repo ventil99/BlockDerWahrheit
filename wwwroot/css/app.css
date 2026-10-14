@@ -1,0 +1,113 @@
+:root {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #1c2340;
+    background: #f6f5f2;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    --ink: #1c2340;
+    --muted: #74788e;
+    --purple: #5242a2;
+    --purple-dark: #403184;
+    --gold: #e4b95f;
+    --line: #e9e8ef;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background: radial-gradient(ellipse at 50% -15%, #e9e6f8 0, transparent 48%), #f6f5f2;
+}
+
+button, input { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+
+.app-shell { width: min(100% - 2rem, 700px); margin: 0 auto; padding: 2.4rem 0 1.5rem; }
+.masthead { display: flex; align-items: center; gap: .85rem; margin: 0 0 1.4rem .25rem; }
+.brand-mark { display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 1rem; color: #fff; background: var(--purple); font: 700 1.7rem Georgia, serif; box-shadow: 0 7px 18px #40318430; }
+.eyebrow, .step-label { margin: 0; color: var(--purple); font-size: .72rem; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.masthead h1 { margin: .05rem 0 0; font: 700 1.45rem Georgia, serif; letter-spacing: .01em; }
+.edition-tag { margin-left: auto; border: 1px solid #ded8f2; border-radius: 99px; padding: .45rem .75rem; color: var(--purple); font-size: .75rem; font-weight: 700; }
+
+.game-card { border: 1px solid #eceaf1; border-radius: 1.35rem; padding: clamp(1.2rem, 5vw, 2rem); background: #fff; box-shadow: 0 16px 50px #27244b12; }
+.section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1.45rem; }
+.section-heading h2 { margin: .45rem 0 .4rem; font: 700 clamp(1.45rem, 6vw, 1.85rem) Georgia, serif; color: var(--ink); }
+.muted { margin: 0; color: var(--muted); font-size: .91rem; line-height: 1.55; }
+.round-pill { flex: 0 0 auto; margin-top: .25rem; border-radius: 99px; padding: .45rem .75rem; background: #f0eefb; color: var(--purple); font-size: .75rem; font-weight: 700; }
+
+.player-list, .prediction-list { display: grid; gap: .7rem; }
+.player-row, .entry-row { display: flex; align-items: center; gap: .8rem; min-width: 0; }
+.seat-number { display: grid; flex: 0 0 2rem; place-items: center; width: 2rem; height: 2rem; border: 1px solid #e4e1f1; border-radius: 50%; color: var(--purple); background: #faf9fe; font-size: .78rem; font-weight: 700; }
+.field { flex: 1; min-width: 0; }
+.field label { display: block; margin: 0 0 .35rem .1rem; color: #575b72; font-size: .76rem; font-weight: 600; }
+.field input, .number-field input { width: 100%; min-height: 3rem; border: 1px solid #dedee8; border-radius: .7rem; padding: .7rem .85rem; color: var(--ink); background: #fff; outline: none; transition: border-color .15s, box-shadow .15s; }
+.field input:focus, .number-field input:focus { border-color: var(--purple); box-shadow: 0 0 0 3px #5242a21c; }
+.field input::placeholder { color: #a1a3b1; }
+.icon-button { flex: 0 0 2.8rem; width: 2.8rem; height: 2.8rem; border: 0; border-radius: .7rem; color: #777b90; background: #f5f4f8; font-size: 1.45rem; cursor: pointer; }
+.icon-button:hover { color: #9a3a56; background: #fff0f2; }
+.secondary-button, .primary-button { display: flex; align-items: center; justify-content: center; gap: .55rem; width: 100%; min-height: 3.1rem; border-radius: .75rem; font-weight: 700; cursor: pointer; transition: background .15s, transform .15s, box-shadow .15s; }
+.secondary-button { border: 1px dashed #d5d1e6; color: var(--purple); background: #fbfaff; }
+.secondary-button:hover:not(:disabled) { border-color: var(--purple); background: #f5f2ff; }
+.secondary-button:disabled { color: #aaa8b6; cursor: not-allowed; }
+.add-button { margin-top: .85rem; }
+.add-button span { font-size: 1.2rem; }
+.primary-button { margin-top: 1.2rem; border: 0; padding: .8rem 1rem; color: #fff; background: var(--purple); box-shadow: 0 8px 18px #5242a22b; }
+.primary-button span { font-size: 1.15rem; }
+.primary-button:hover { background: var(--purple-dark); box-shadow: 0 10px 22px #5242a23b; }
+.primary-button:active, .secondary-button:active, .icon-button:active { transform: translateY(1px); }
+button:focus-visible { outline: 3px solid #e4b95f; outline-offset: 3px; }
+
+.rule-note { display: flex; align-items: flex-start; gap: .8rem; margin-top: 1.25rem; padding: .9rem 1rem; border-radius: .85rem; color: #5d5874; background: #f7f5fd; font-size: .82rem; line-height: 1.5; }
+.rule-note p { margin: 0; }
+.rule-note strong { color: var(--ink); }
+.note-icon { color: #c0953b; font-size: 1.15rem; }
+.form-error { margin: .8rem 0 0; color: #a32645; font-size: .87rem; font-weight: 600; line-height: 1.5; }
+
+.turn-order { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; margin-bottom: 1.25rem; }
+.turn-item { display: flex; align-items: flex-start; gap: .5rem; min-width: 0; padding: .7rem .6rem; border: 1px solid var(--line); border-radius: .8rem; background: #fcfbfe; }
+.turn-icon { color: #b28b42; font-size: 1rem; }
+.turn-item p { display: grid; gap: .2rem; min-width: 0; margin: 0; }
+.turn-item p span { color: var(--muted); font-size: .67rem; line-height: 1.3; }
+.turn-item p strong { overflow-wrap: anywhere; color: var(--ink); font-size: .79rem; }
+.entry-row { min-height: 3.55rem; padding: .35rem .5rem; border: 1px solid #efedf3; border-radius: .8rem; }
+.entry-row > label, .score-name { flex: 1; min-width: 0; color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.number-field { display: flex; flex: 0 0 8.8rem; align-items: center; gap: .5rem; }
+.number-field input { min-height: 2.75rem; width: 4rem; padding: .55rem; text-align: center; font-weight: 700; }
+.number-field span { color: var(--muted); font-size: .75rem; }
+.sum-note { margin: .9rem 0 0; color: var(--muted); font-size: .85rem; }
+.sum-note strong { color: var(--ink); }
+.score-name { display: grid; gap: .2rem; }
+.score-name span { color: var(--muted); font-size: .75rem; font-weight: 400; }
+
+.result-heading { align-items: center; }
+.success-mark { display: grid; flex: 0 0 2.6rem; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%; color: #29714c; background: #e8f6ed; font-size: 1.2rem; font-weight: 700; }
+.results-table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { padding: .75rem .5rem; border-bottom: 1px solid var(--line); text-align: center; font-size: .82rem; overflow-wrap: anywhere; }
+thead th { color: var(--muted); font-size: .7rem; font-weight: 600; }
+th:first-child { width: 30%; text-align: left; }
+tbody th { color: var(--ink); font-weight: 600; }
+.points { color: #a32645; font-weight: 700; }
+.total-points { color: var(--purple); }
+.scoring-note { display: grid; gap: .2rem; margin-top: 1.1rem; padding: .85rem 1rem; border-radius: .8rem; background: #f7f5fd; color: var(--muted); font-size: .78rem; line-height: 1.45; }
+.scoring-note strong { color: var(--ink); }
+.app-footer { padding: 1.2rem .5rem 0; color: #9293a1; text-align: center; font-size: .76rem; }
+.app-loading { margin: 0; position: absolute; top: 45vh; width: 100%; color: var(--purple); text-align: center; font-size: .9rem; }
+
+#blazor-error-ui { display: none; position: fixed; z-index: 1000; right: 1rem; bottom: 1rem; left: 1rem; padding: 1rem 2.5rem 1rem 1rem; border: 1px solid #e6b4bd; border-radius: .8rem; color: #7c1b33; background: #fff1f3; box-shadow: 0 8px 30px #1c234022; }
+#blazor-error-ui .reload { color: inherit; font-weight: 700; }
+#blazor-error-ui .dismiss { position: absolute; top: .7rem; right: .8rem; cursor: pointer; }
+
+@media (max-width: 560px) {
+    .app-shell { width: min(100% - 1.1rem, 700px); padding-top: 1.2rem; }
+    .masthead { margin-bottom: .9rem; }
+    .game-card { border-radius: 1.05rem; }
+    .turn-order { grid-template-columns: 1fr; }
+    .turn-item { align-items: center; padding: .55rem .75rem; }
+    .turn-item p { grid-template-columns: minmax(7.8rem, .8fr) 1.2fr; align-items: center; width: 100%; }
+    th, td { padding: .65rem .25rem; font-size: .72rem; }
+    thead th { font-size: .62rem; }
+    th:first-child { width: 29%; }
+}
