@@ -21,7 +21,7 @@
                     <h2 id="page-heading">Wer spielt mit?</h2>
                     <p class="muted">Namen in Sitzreihenfolge im Uhrzeigersinn eintragen.</p>
                 </div>
-                <span class="round-pill">3–6 Personen</span>
+                <span class="round-pill">3–6 Spielende</span>
             </div>
 
             <div class="player-list">
@@ -32,16 +32,16 @@
                     <div class="player-row" @key="player">
                         <span class="seat-number" aria-hidden="true">@(index + 1)</span>
                         <div class="field">
-                            <label for="player-name-@index">Name von Person @(index + 1)</label>
+                            <label for="player-name-@index">Name für Spielende @(index + 1)</label>
                             <input id="player-name-@index" @bind="player.Name" @bind:event="oninput" autocomplete="off" placeholder="Name eingeben" />
                         </div>
-                        <button class="icon-button" type="button" aria-label="Person @(index + 1) entfernen" @onclick="() => RemovePlayer(index)">×</button>
+                        <button class="icon-button" type="button" aria-label="Spielende @(index + 1) entfernen" @onclick="() => RemovePlayer(index)">×</button>
                     </div>
                 }
             </div>
 
             <button class="secondary-button add-button" type="button" @onclick="AddPlayer" disabled="@(players.Count >= MaxPlayers)">
-                <span aria-hidden="true">＋</span> Person hinzufügen
+                <span aria-hidden="true">＋</span> Spielende hinzufügen
             </button>
 
             @if (!string.IsNullOrWhiteSpace(setupError))
@@ -188,7 +188,7 @@
         setupError = "";
         if (players.Count is < MinPlayers or > MaxPlayers)
         {
-            setupError = "Für eine Partie braucht ihr drei bis sechs Personen.";
+            setupError = "Für eine Wizard-Partie braucht ihr drei bis sechs Spielende.";
             return;
         }
 
