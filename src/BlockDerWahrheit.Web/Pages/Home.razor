@@ -133,12 +133,12 @@
                     @if (selectedSpecialCards["Bombe"])
                     {
                         <button class="secondary-button bomb-add-button" type="button" aria-label="Bombe hinzufügen" disabled="@(!CanRecordBomb)" @onclick="RecordBomb"><span aria-hidden="true">+</span> Bombe hinzufügen</button>
-                        <p class="sum-note">Bomben ausgespielt: <strong>@bombCount von @MaxBombUses</strong></p>
+                        <p class="sum-note">Bomben ausgespielt: <strong>@bombCount von @MaxUsesPerCard</strong></p>
                     }
                     @if (selectedSpecialCards["Wolke"])
                     {
                         <button class="secondary-button bomb-add-button" type="button" aria-label="Wolke hinzufügen" disabled="@(!CanRecordCloud)" @onclick="OpenCloudDialog"><span aria-hidden="true">+</span> Wolke hinzufügen</button>
-                        <p class="sum-note">Wolken ausgespielt: <strong>@CloudCount von @MaxCloudUses</strong></p>
+                        <p class="sum-note">Wolken ausgespielt: <strong>@CloudCount von @MaxUsesPerCard</strong></p>
                     }
                     <p class="sum-note">Sonderkarten-Einsätze: <strong>@SpecialCardUseCount von @MaxRoundSpecialUses</strong> in dieser Stichrunde.</p>
                 </fieldset>
@@ -213,7 +213,7 @@
                         }
                         <div class="results-table-wrap">
                             <table>
-                                <thead><tr><th scope="col">Person</th><th scope="col">Ursprüngliche Ansage</th><th scope="col">Wolke</th><th scope="col">Gültige Ansage</th><th scope="col">Stiche</th><th scope="col">Runde</th><th scope="col">Gesamt</th></tr></thead>
+                                <thead><tr><th scope="col">Person</th><th scope="col">Ursprüngliche Vorhersage</th><th scope="col">Wolke</th><th scope="col">Gültige Vorhersage</th><th scope="col">Stiche</th><th scope="col">Runde</th><th scope="col">Gesamt</th></tr></thead>
                                 <tbody>
                                     @foreach (var result in round.Results)
                                     {
@@ -255,7 +255,7 @@
                             <select id="cloud-player" @bind="cloudPlayerIndex">
                                 @for (var index = 0; index < players.Count; index++)
                                 {
-                                    <option value="@index">@players[index].Name (Ansage @players[index].Prediction)</option>
+                                    <option value="@index">@players[index].Name (Vorhersage @players[index].Prediction)</option>
                                 }
                             </select>
                         </div>
@@ -312,13 +312,12 @@
     private int PredictionSum => players.Sum(player => player.Prediction ?? 0);
     private int WonTrickSum => players.Sum(player => player.WonTricks ?? 0);
     private int DistributableTrickCount => RoundTrickCount - bombCount;
-    private int MaxBombUses => selectedSpecialCards["Hexe"] && RoundTrickCount > 1 ? 2 : 1;
-    private int MaxCloudUses => selectedSpecialCards["Hexe"] && RoundTrickCount > 1 ? 2 : 1;
+    private int MaxUsesPerCard => selectedSpecialCards["Hexe"] && RoundTrickCount > 1 ? 2 : 1;
     private int MaxRoundSpecialUses => Math.Min(selectedSpecialCards["Hexe"] ? 3 : 2, RoundTrickCount);
     private int CloudCount => cloudEvents.Count;
     private int SpecialCardUseCount => bombCount + CloudCount;
-    private bool CanRecordBomb => bombCount < MaxBombUses && SpecialCardUseCount < MaxRoundSpecialUses;
-    private bool CanRecordCloud => CloudCount < MaxCloudUses && SpecialCardUseCount < MaxRoundSpecialUses;
+    private bool CanRecordBomb => bombCount < MaxUsesPerCard && SpecialCardUseCount < MaxRoundSpecialUses;
+    private bool CanRecordCloud => CloudCount < MaxUsesPerCard && SpecialCardUseCount < MaxRoundSpecialUses;
     private string PredictionSumRule => mustPredictionSumDiffer ? "muss von der Stichzahl abweichen." : "darf der Stichzahl entsprechen.";
     private string SpecialCardsSummary
     {
