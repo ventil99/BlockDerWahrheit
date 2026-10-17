@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:offline": "dotnet publish -c Release -o ../../publish && playwright test --config=playwright.offline.config.js"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1"
