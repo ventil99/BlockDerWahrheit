@@ -126,6 +126,28 @@
                 <span class="round-pill">@RoundTrickCount @(RoundTrickCount == 1 ? "Stich" : "Stiche")</span>
             </div>
 
+            @if (selectedSpecialCards["Bombe"])
+            {
+                <fieldset class="setup-group bomb-capture">
+                    <legend>Bomben beim jeweiligen Stich erfassen</legend>
+                    <p class="muted">Für jede ausgespielte Bombe den betroffenen Stich antippen. Mehrere Bomben im selben Stich zählen nur als ein Bombenstich.</p>
+                    <div class="bomb-trick-list">
+                        @foreach (var trick in Enumerable.Range(1, RoundTrickCount))
+                        {
+                            var count = bombEvents.Count(bombTrick => bombTrick == trick);
+                            <button class="bomb-trick-button" type="button" aria-label="Bombe bei Stich @trick erfassen" @onclick="() => RecordBomb(trick)">
+                                Stich @trick · Bombe erfassen
+                                @if (count > 0)
+                                {
+                                    <span>(@count erfasst)</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                    <p class="sum-note">Erfasste Bomben: @(string.IsNullOrEmpty(CurrentBombSummary) ? "keine" : CurrentBombSummary)</p>
+                </fieldset>
+            }
+
             <div class="prediction-list">
                 @foreach (var entry in PredictionOrder.Select((player, index) => (player, index)))
                 {
@@ -185,6 +207,10 @@
                 {
                     <div class="round-result">
                         <h3>Stichrunde @round.Number <span>Geber: @players[round.DealerIndex].Name</span></h3>
+                        @if (round.BombEvents.Count > 0)
+                        {
+                            <p class="muted">Erfasste Bomben: @FormatBombs(round.BombEvents)</p>
+                        }
                         <div class="results-table-wrap">
                             <table>
                                 <thead><tr><th scope="col">Person</th><th scope="col">Ansage</th><th scope="col">Stiche</th><th scope="col">Runde</th><th scope="col">Gesamt</th></tr></thead>
@@ -217,6 +243,7 @@
     private static readonly string[] SpecialCardNames = ["Gestaltenwandler", "Drache", "Fee", "Bombe", "Werwolf", "Jongleur", "Wolke", "Hexe", "Vampir"];
     private readonly List<Participant> players = [new(), new(), new()];
     private readonly List<CompletedRound> completedRounds = [];
+    private readonly List<int> bombEvents = [];
     private readonly Dictionary<string, bool> selectedSpecialCards = SpecialCardNames.ToDictionary(card => card, _ => true);
     private GamePhase phase = GamePhase.Setup;
     private int dealerIndex;
@@ -234,6 +261,8 @@
     private IEnumerable<Participant> PredictionOrder => Enumerable.Range(1, players.Count).Select(offset => players[(dealerIndex + offset) % players.Count]);
     private int PredictionSum => players.Sum(player => player.Prediction ?? 0);
     private int WonTrickSum => players.Sum(player => player.WonTricks ?? 0);
+    private int BombedTrickCount => bombEvents.Distinct().Count();
+    private string CurrentBombSummary => FormatBombs(bombEvents);
     private string PredictionSumRule => mustPredictionSumDiffer ? "muss von der Stichzahl abweichen." : "darf der Stichzahl entsprechen.";
     private string SpecialCardsSummary
     {
@@ -292,7 +321,14 @@
             return;
         }
 
+        bombEvents.Clear();
         phase = GamePhase.Scoring;
+    }
+
+    private void RecordBomb(int trickNumber)
+    {
+        if (phase == GamePhase.Scoring && selectedSpecialCards["Bombe"] && trickNumber is >= 1 && trickNumber <= RoundTrickCount)
+            bombEvents.Add(trickNumber);
     }
 
     private void FinishRound()
@@ -304,9 +340,10 @@
             return;
         }
 
-        if (WonTrickSum != RoundTrickCount)
+        var expectedWonTrickSum = RoundTrickCount - BombedTrickCount;
+        if (WonTrickSum != expectedWonTrickSum)
         {
-            scoringError = $"Die Summe der gewonnenen Stiche muss genau {RoundTrickCount} betragen.";
+            scoringError = $"Die Summe der gewonnenen Stiche muss genau {expectedWonTrickSum} betragen.";
             return;
         }
 
@@ -320,7 +357,7 @@
             return new RoundPlayerResult(player, prediction, wonTricks, points, player.TotalPoints);
         }).ToList();
 
-        completedRounds.Add(new CompletedRound(CurrentRoundNumber, dealerIndex, results));
+        completedRounds.Add(new CompletedRound(CurrentRoundNumber, dealerIndex, results, bombEvents.ToList()));
         phase = GamePhase.Results;
     }
 
@@ -336,6 +373,7 @@
             player.WonTricks = null;
         }
 
+        bombEvents.Clear();
         predictionError = "";
         scoringError = "";
         phase = GamePhase.Predictions;
@@ -348,6 +386,7 @@
     }
 
     private static string Signed(int points) => points > 0 ? $"+{points}" : points.ToString();
+    private static string FormatBombs(IEnumerable<int> bombTricks) => string.Join(", ", bombTricks.GroupBy(trick => trick).OrderBy(group => group.Key).Select(group => $"Stich {group.Key} ({group.Count()})"));
 
     private sealed class Participant
     {
@@ -357,7 +396,7 @@
         public int TotalPoints { get; set; }
     }
 
-    private sealed record CompletedRound(int Number, int DealerIndex, List<RoundPlayerResult> Results);
+    private sealed record CompletedRound(int Number, int DealerIndex, List<RoundPlayerResult> Results, List<int> BombEvents);
     private sealed record RoundPlayerResult(Participant Player, int Prediction, int WonTricks, int Points, int TotalPoints);
 
     private enum GamePhase { Setup, Predictions, Scoring, Results }

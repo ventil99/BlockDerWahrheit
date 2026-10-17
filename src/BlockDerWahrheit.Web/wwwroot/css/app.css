@@ -66,6 +66,11 @@ input[type="radio"]:focus-visible, input[type="checkbox"]:focus-visible { outlin
 .setup-settings { display: grid; gap: 1rem; margin-top: 1.25rem; }
 .setup-group { min-width: 0; margin: 0; padding: .9rem 1rem 1rem; border: 1px solid var(--line); border-radius: .85rem; }
 .setup-group legend { padding: 0 .3rem; color: var(--ink); font-size: .86rem; font-weight: 700; }
+.bomb-capture { margin-bottom: 1rem; }
+.bomb-trick-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .55rem; margin-top: .75rem; }
+.bomb-trick-button { min-height: 2.8rem; border: 1px solid #d5d1e6; border-radius: .65rem; padding: .45rem .6rem; color: var(--purple); background: #fbfaff; font-size: .8rem; font-weight: 700; cursor: pointer; }
+.bomb-trick-button:hover { border-color: var(--purple); background: #f5f2ff; }
+.bomb-trick-button span { display: block; color: var(--muted); font-size: .72rem; }
 .setting-option { display: flex; align-items: flex-start; gap: .65rem; margin-top: .65rem; color: #575b72; font-size: .84rem; line-height: 1.45; cursor: pointer; }
 .setting-option input, .card-option input { flex: 0 0 auto; width: 1.15rem; height: 1.15rem; margin: .05rem 0 0; }
 .setting-option strong { color: var(--purple); font-size: .72rem; }

@@ -13,9 +13,13 @@ async function fillByRowName(rows, selector, values) {
   }
 }
 
-async function scoreCurrentRound(page, trickCount) {
+async function confirmZeroPredictions(page) {
   for (const input of await page.getByRole('spinbutton').all()) await input.fill('0');
   await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+}
+
+async function scoreCurrentRound(page, trickCount) {
+  await confirmZeroPredictions(page);
   await expect(page.getByRole('heading', { name: 'Gewonnene Stiche' })).toBeVisible();
   const scoreInputs = await page.getByRole('spinbutton').all();
   for (const [index, input] of scoreInputs.entries()) await input.fill(index === 0 ? String(trickCount) : '0');
@@ -249,4 +253,84 @@ test('schließt alle regulären Rundenspielpläne ab und bietet danach keine nä
     await expect(page.getByRole('button', { name: 'Partie vorzeitig beenden' })).toHaveCount(0);
     await expect(page.getByText(`Bisherige Ergebnisse (${roundCount} Stichrunden)`)).toBeVisible();
   }
+});
+
+test('erfasst einen Bombenstich und wertet nur die übrigen Stiche', async ({ page }) => {
+  await startGameWithPlayers(page, 3);
+  await confirmZeroPredictions(page);
+
+  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
+  await expect(page.getByText('Erfasste Bomben: Stich 1 (1)')).toBeVisible();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
+    'Person 1': 0,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Euer Ergebnis' })).toBeVisible();
+  await expect(page.getByText('Erfasste Bomben: Stich 1 (1)')).toBeVisible();
+});
+
+test('erfasst Bomben in späteren Stichen derselben Stichrunde', async ({ page }) => {
+  await startGameWithPlayers(page, 3);
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+  await confirmZeroPredictions(page);
+
+  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
+  await page.getByRole('button', { name: /Bombe bei Stich 2 erfassen/ }).click();
+  await expect(page.getByText('Erfasste Bomben: Stich 1 (1), Stich 2 (1)')).toBeVisible();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
+    'Person 1': 0,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Euer Ergebnis' })).toBeVisible();
+  await expect(page.getByText('Erfasste Bomben: Stich 1 (1), Stich 2 (1)')).toBeVisible();
+});
+
+test('zieht mehrere Bomben im selben Stich nur einmal ab', async ({ page }) => {
+  await startGameWithPlayers(page, 3);
+  await confirmZeroPredictions(page);
+
+  const bombButton = page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ });
+  await bombButton.click();
+  await bombButton.click();
+  await expect(page.getByText('Erfasste Bomben: Stich 1 (2)')).toBeVisible();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
+    'Person 1': 0,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Euer Ergebnis' })).toBeVisible();
+});
+
+test('weist eine falsche Summe gewonnener Stiche nach einem Bombenstich ab', async ({ page }) => {
+  await startGameWithPlayers(page, 3);
+  await confirmZeroPredictions(page);
+  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
+    'Person 1': 1,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+
+  await expect(page.getByRole('alert')).toContainText('genau 0 betragen');
+  await expect(page.getByRole('heading', { name: 'Gewonnene Stiche' })).toBeVisible();
+});
+
+test('zeigt die Bombenerfassung nur bei gewählter Bombe', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByLabel('Bombe').uncheck();
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await confirmZeroPredictions(page);
+
+  await expect(page.getByRole('button', { name: /Bombe bei Stich/ })).toHaveCount(0);
 });
