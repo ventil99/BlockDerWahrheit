@@ -1,6 +1,6 @@
 # Wizard-Punktezähler
 
-Deutschsprachige Blazor-WebAssembly-PWA für Wizard-Partien. Aktuell unterstützt sie die Einrichtung mit drei bis sechs Spielenden sowie Vorhersage und Wertung der ersten Stichrunde.
+Deutschsprachige Blazor-WebAssembly-PWA für Wizard-Partien. Sie unterstützt die Einrichtung mit drei bis sechs Spielenden, die Auswahl der Vorhersagesummen-Regel und Sonderkarten sowie Vorhersage und Wertung der ersten Stichrunde.
 
 ## Voraussetzungen
 

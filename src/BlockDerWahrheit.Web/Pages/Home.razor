@@ -49,9 +49,33 @@
                 <p class="form-error" role="alert">@setupError</p>
             }
 
-            <div class="rule-note">
-                <span class="note-icon" aria-hidden="true">✦</span>
-                <p><strong>Standardregeln</strong><br />Die Vorhersagesumme darf der Stichzahl entsprechen.</p>
+            <div class="setup-settings">
+                <fieldset class="setup-group">
+                    <legend>Regel für die Vorhersagesumme</legend>
+                    <label class="setting-option">
+                        <input type="radio" name="prediction-sum-rule" checked="@(!mustPredictionSumDiffer)" @onchange="() => mustPredictionSumDiffer = false" />
+                        <span>Vorhersagesumme darf der Stichzahl entsprechen <strong>(Standard)</strong></span>
+                    </label>
+                    <label class="setting-option">
+                        <input type="radio" name="prediction-sum-rule" checked="@mustPredictionSumDiffer" @onchange="() => mustPredictionSumDiffer = true" />
+                        <span>Vorhersagesumme muss von der Stichzahl abweichen</span>
+                    </label>
+                </fieldset>
+
+                <fieldset class="setup-group">
+                    <legend>Sonderkarten dieser Partie</legend>
+                    <p class="muted">Wählt die Karten aus, die ihr verwendet. Auch keine Sonderkarten sind möglich.</p>
+                    <div class="special-card-options">
+                        @foreach (var card in SpecialCardNames)
+                        {
+                            <label class="card-option">
+                                <input type="checkbox" @bind="selectedSpecialCards[card]" />
+                                <span>@card</span>
+                            </label>
+                        }
+                    </div>
+                    <p class="special-card-note">Drache und Fee werden gemeinsam empfohlen.</p>
+                </fieldset>
             </div>
 
             <button class="primary-button" type="button" @onclick="StartGame">Partie starten <span aria-hidden="true">→</span></button>
@@ -84,7 +108,7 @@
                 }
             </div>
 
-            <p class="sum-note">Vorhersagesumme: <strong>@PredictionSum</strong> von @RoundTrickCount @(RoundTrickCount == 1 ? "Stich" : "Stichen"). Die Summe darf passen.</p>
+            <p class="sum-note">Vorhersagesumme: <strong>@PredictionSum</strong> von @RoundTrickCount @(RoundTrickCount == 1 ? "Stich" : "Stichen"). Die Summe @PredictionSumRule</p>
             @if (!string.IsNullOrWhiteSpace(predictionError))
             {
                 <p class="form-error" role="alert">@predictionError</p>
@@ -144,6 +168,15 @@
             <div class="scoring-note"><strong>Wertung</strong><span>Exakte Vorhersage: 20 Punkte plus 10 je Stich. Sonst: −10 Punkte je Stich Abweichung.</span></div>
         }
 
+        @if (phase != GamePhase.Setup)
+        {
+            <section class="game-settings" aria-label="Vereinbarte Einstellungen">
+                <h3>Vereinbarte Einstellungen</h3>
+                <p>Vorhersagesumme @PredictionSumRule</p>
+                <p>Sonderkarten: @SpecialCardsSummary</p>
+            </section>
+        }
+
         @if (completedRounds.Count > 0)
         {
             <details class="round-history" open="@(phase == GamePhase.Results)">
@@ -181,11 +214,14 @@
 @code {
     private const int MinPlayers = 3;
     private const int MaxPlayers = 6;
+    private static readonly string[] SpecialCardNames = ["Gestaltenwandler", "Drache", "Fee", "Bombe", "Werwolf", "Jongleur", "Wolke", "Hexe", "Vampir"];
     private readonly List<Participant> players = [new(), new(), new()];
     private readonly List<CompletedRound> completedRounds = [];
+    private readonly Dictionary<string, bool> selectedSpecialCards = SpecialCardNames.ToDictionary(card => card, _ => true);
     private GamePhase phase = GamePhase.Setup;
     private int dealerIndex;
     private bool endedEarly;
+    private bool mustPredictionSumDiffer;
     private string setupError = "";
     private string predictionError = "";
     private string scoringError = "";
@@ -198,6 +234,15 @@
     private IEnumerable<Participant> PredictionOrder => Enumerable.Range(1, players.Count).Select(offset => players[(dealerIndex + offset) % players.Count]);
     private int PredictionSum => players.Sum(player => player.Prediction ?? 0);
     private int WonTrickSum => players.Sum(player => player.WonTricks ?? 0);
+    private string PredictionSumRule => mustPredictionSumDiffer ? "muss von der Stichzahl abweichen." : "darf der Stichzahl entsprechen.";
+    private string SpecialCardsSummary
+    {
+        get
+        {
+            var selected = SpecialCardNames.Where(card => selectedSpecialCards[card]).ToArray();
+            return selected.Length == 0 ? "keine Sonderkarten" : string.Join(", ", selected);
+        }
+    }
 
     private void AddPlayer()
     {
@@ -238,6 +283,12 @@
         if (players.Any(player => player.Prediction is null || player.Prediction < 0 || player.Prediction > RoundTrickCount))
         {
             predictionError = $"Jede Vorhersage muss eine ganze Zahl von 0 bis {RoundTrickCount} sein.";
+            return;
+        }
+
+        if (mustPredictionSumDiffer && PredictionSum == RoundTrickCount)
+        {
+            predictionError = $"Die Vorhersagesumme muss von der Stichzahl ({RoundTrickCount}) abweichen.";
             return;
         }
 

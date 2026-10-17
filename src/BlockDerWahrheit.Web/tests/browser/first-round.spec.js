@@ -31,6 +31,79 @@ async function startGameWithPlayers(page, playerCount) {
   await page.getByRole('button', { name: 'Partie starten' }).click();
 }
 
+test('nutzt die Standardregeln und erlaubt jede Sonderkartenauswahl', async ({ page }) => {
+  const names = ['Ada', 'Bela', 'Cora'];
+  await page.goto('/');
+  await fillNames(page, names);
+
+  await expect(page.getByRole('radio', { name: 'Vorhersagesumme darf der Stichzahl entsprechen' })).toBeChecked();
+  const cards = page.getByRole('checkbox');
+  await expect(cards).toHaveCount(9);
+  for (const card of await cards.all()) await expect(card).toBeChecked();
+  for (const name of ['Gestaltenwandler', 'Drache', 'Fee', 'Bombe', 'Werwolf', 'Jongleur', 'Wolke', 'Hexe', 'Vampir']) {
+    await expect(page.getByLabel(name)).toBeChecked();
+  }
+  await expect(page.getByText('Drache und Fee werden gemeinsam empfohlen.')).toBeVisible();
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+  await page.setViewportSize({ width: 1280, height: 844 });
+
+  await page.getByLabel('Drache').uncheck();
+  await expect(page.getByLabel('Fee')).toBeChecked();
+  for (const card of await cards.all()) await card.uncheck();
+  await page.getByLabel('Bombe').check();
+  await page.getByLabel('Vampir').check();
+
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  const settings = page.getByRole('region', { name: 'Vereinbarte Einstellungen' });
+  await expect(settings).toContainText('Vorhersagesumme darf der Stichzahl entsprechen.');
+  await expect(settings).toContainText('Sonderkarten: Bombe, Vampir');
+
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', {
+    [names[0]]: 1,
+    [names[1]]: 0,
+    [names[2]]: 0,
+  });
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+  await expect(page.getByRole('heading', { name: 'Gewonnene Stiche' })).toBeVisible();
+  await expect(settings).toContainText('Sonderkarten: Bombe, Vampir');
+});
+
+test('erlaubt eine Partie ohne Sonderkarten', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  for (const card of await page.getByRole('checkbox').all()) await card.uncheck();
+
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await expect(page.getByRole('region', { name: 'Vereinbarte Einstellungen' }))
+    .toContainText('Sonderkarten: keine Sonderkarten');
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', { Ada: 0, Bela: 0, Cora: 0 });
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+  await expect(page.getByRole('heading', { name: 'Gewonnene Stiche' })).toBeVisible();
+});
+
+test('verhindert bei der alternativen Regel eine gleiche Vorhersagesumme', async ({ page }) => {
+  const names = ['Ada', 'Bela', 'Cora'];
+  await page.goto('/');
+  await fillNames(page, names);
+  await page.getByRole('radio', { name: 'Vorhersagesumme muss von der Stichzahl abweichen' }).check();
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+
+  const predictions = page.locator('.prediction-list .entry-row');
+  await fillByRowName(predictions, 'label', { [names[0]]: 1, [names[1]]: 0, [names[2]]: 0 });
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+  await expect(page.getByRole('alert')).toContainText('muss von der Stichzahl (1) abweichen');
+  await expect(page.getByRole('heading', { name: 'Vorhersagen' })).toBeVisible();
+
+  await fillByRowName(predictions, 'label', { [names[0]]: 0, [names[1]]: 0, [names[2]]: 0 });
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+  await expect(page.getByRole('heading', { name: 'Gewonnene Stiche' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Vereinbarte Einstellungen' }))
+    .toContainText('Vorhersagesumme muss von der Stichzahl abweichen.');
+});
+
 test('richtet eine Partie ein, prüft Eingaben und wertet eine korrekte Ansage', async ({ page }) => {
   const names = ['<b>Ada</b>', 'Bela', 'Cora'];
   await page.goto('/');
