@@ -16,7 +16,7 @@
     </header>
 
     <section class="game-card" aria-labelledby="page-heading">
-        @if (initialized && !showCollection && phase != GamePhase.Setup && savedGames.Count > 0)
+        @if (initialized && !showCollection && savedGames.Count > 0)
         {
             <button class="collection-link" type="button" @onclick="ShowCollection">Zur Partienübersicht</button>
         }
@@ -30,17 +30,24 @@
                 <div>
                     <p class="step-label">Partiensammlung</p>
                     <h2 id="page-heading">Eure Wizard-Partien</h2>
-                    <p class="muted">Offene und abgeschlossene Partien bleiben auf diesem Gerät erhalten.</p>
+                    @if (string.IsNullOrWhiteSpace(storageError))
+                    {
+                        <p class="muted">Offene und abgeschlossene Partien bleiben auf diesem Gerät erhalten.</p>
+                    }
+                    else
+                    {
+                        <p class="muted">Änderungen an diesen Partien sind nicht dauerhaft gespeichert.</p>
+                    }
                 </div>
             </div>
             <button class="primary-button" type="button" @onclick="CreateNewGame">Neue Partie <span aria-hidden="true">→</span></button>
             @if (savedGames.Count == 0)
             {
-                <p class="sum-note">Noch keine gespeicherten Partien.</p>
+                <p class="sum-note">Noch keine Partien.</p>
             }
             else
             {
-                <div class="saved-games" aria-label="Gespeicherte Partien">
+                <div class="saved-games" aria-label="Partien">
                     @foreach (var game in savedGames)
                     {
                         <article class="saved-game" @key="game.Id">
@@ -57,10 +64,6 @@
         }
         else if (phase == GamePhase.Setup)
         {
-            @if (savedGames.Count > 0)
-            {
-                <button class="collection-link" type="button" @onclick="ShowCollection">Zur Partienübersicht</button>
-            }
             <div class="section-heading">
                 <div>
                     <p class="step-label">Schritt 1 von 3</p>

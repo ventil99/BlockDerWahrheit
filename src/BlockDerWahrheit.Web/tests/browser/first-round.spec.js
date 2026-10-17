@@ -619,4 +619,8 @@ test('meldet einen Fehler, wenn der Browser den Speicherzugriff verweigert', asy
   await fillNames(page, ['Ada', 'Bela', 'Cora']);
   await page.getByRole('button', { name: 'Partie starten' }).click();
   await expect(page.getByRole('alert')).toContainText('Die Partie konnte nicht im Browser gespeichert werden');
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await expect(page.getByText('Änderungen an diesen Partien sind nicht dauerhaft gespeichert.')).toBeVisible();
+  await expect(page.getByLabel('Partien', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Gespeicherte Partien')).toHaveCount(0);
 });
