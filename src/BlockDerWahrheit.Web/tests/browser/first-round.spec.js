@@ -354,3 +354,162 @@ test('zeigt nach zwei Bomben in Stichrunde drei nur einen verteilbaren Stich', a
   await expect(page.getByText('Bomben ausgespielt: 2 von 2')).toBeVisible();
   await expect(page.getByText('Gewonnene Stiche: 0 von 1.')).toBeVisible();
 });
+
+test('wendet eine Wolkenänderung auf Ansage und Wertung an', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Person 1', 'Person 2', 'Person 3']);
+  await page.getByRole('radio', { name: 'Vorhersagesumme muss von der Stichzahl abweichen' }).check();
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', {
+    'Person 1': 0,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+
+  await page.getByRole('button', { name: 'Wolke hinzufügen' }).click();
+  const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
+  await expect(cloudDialog).toBeVisible();
+  await cloudDialog.getByLabel('Gewinnende Person').selectOption({ label: 'Person 1 (Ansage 0)' });
+  await cloudDialog.getByLabel('Vorhersage um eins verringern').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+  await expect(cloudDialog.getByRole('alert')).toContainText('zwischen 0 und 1 liegen');
+  await expect(page.getByText('Wolken ausgespielt: 0 von 1')).toBeVisible();
+
+  await cloudDialog.getByLabel('Vorhersage um eins erhöhen').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+
+  await expect(page.locator('.score-name').filter({ hasText: 'Person 1' })).toContainText('Vorhersage: 1');
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
+    'Person 1': 1,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+
+  const playerRow = page.locator('tbody tr').filter({ hasText: 'Person 1' });
+  await expect(playerRow).toContainText('0');
+  await expect(playerRow).toContainText('+1');
+  await expect(playerRow).toContainText('1');
+  await expect(playerRow).toContainText('+30');
+});
+
+test('weist eine Wolkenänderung über der Stichzahl ab und erlaubt minus eins', async ({ page }) => {
+  await startGameWithPlayers(page, 3);
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', {
+    'Person 1': 2,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+
+  const addCloud = page.getByRole('button', { name: 'Wolke hinzufügen' });
+  await addCloud.click();
+  const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
+  await cloudDialog.getByLabel('Gewinnende Person').selectOption({ label: 'Person 1 (Ansage 2)' });
+  await cloudDialog.getByLabel('Vorhersage um eins erhöhen').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+  await expect(cloudDialog.getByRole('alert')).toContainText('zwischen 0 und 2 liegen');
+  await expect(page.getByText('Wolken ausgespielt: 0 von 2')).toBeVisible();
+
+  await cloudDialog.getByLabel('Vorhersage um eins verringern').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+  await expect(page.locator('.score-name').filter({ hasText: 'Person 1' })).toContainText('Vorhersage: 1');
+  await addCloud.click();
+  await cloudDialog.getByLabel('Gewinnende Person').selectOption({ label: 'Person 1 (Ansage 1)' });
+  await cloudDialog.getByLabel('Vorhersage um eins verringern').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+
+  await expect(page.locator('.score-name').filter({ hasText: 'Person 1' })).toContainText('Vorhersage: 0');
+  await expect(addCloud).toBeDisabled();
+  await expect(page.getByText('Wolken ausgespielt: 2 von 2')).toBeVisible();
+
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
+    'Person 1': 0,
+    'Person 2': 1,
+    'Person 3': 1,
+  });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+  const playerRow = page.locator('tbody tr').filter({ hasText: 'Person 1' }).last();
+  await expect(playerRow).toContainText('2');
+  await expect(playerRow).toContainText('-2');
+  await expect(playerRow).toContainText('+20');
+});
+
+test('begrenzt Bomben und Wolken ohne Hexe gemeinsam auf die Stichzahl', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByLabel('Hexe').uncheck();
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+  await confirmZeroPredictions(page);
+
+  const addBomb = page.getByRole('button', { name: 'Bombe hinzufügen' });
+  const addCloud = page.getByRole('button', { name: 'Wolke hinzufügen' });
+  await addBomb.click();
+  await expect(addCloud).toBeEnabled();
+  await addCloud.click();
+  const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
+  await cloudDialog.getByLabel('In diesem Stich wurde auch eine Bombe gespielt').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+
+  await expect(addBomb).toBeDisabled();
+  await expect(addCloud).toBeDisabled();
+  await expect(page.getByText('Sonderkarten-Einsätze: 2 von 2 in dieser Stichrunde.')).toBeVisible();
+});
+
+test('wertet Wolke und Bombe im selben Stich ohne Vorhersageänderung', async ({ page }) => {
+  await startGameWithPlayers(page, 3);
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+  await confirmZeroPredictions(page);
+
+  const addCloud = page.getByRole('button', { name: 'Wolke hinzufügen' });
+  await addCloud.click();
+  const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
+  await cloudDialog.getByLabel('In diesem Stich wurde auch eine Bombe gespielt').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+  await expect(page.getByText('Vorhersage: 0', { exact: false }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+  await expect(page.getByRole('alert')).toContainText('Erfasst für jede Wolke im Bombenstich auch eine Bombe');
+
+  await page.getByRole('button', { name: 'Bombe hinzufügen' }).click();
+
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
+    'Person 1': 1,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+  await expect(page.getByText('Wolkenereignisse: Bombe + Wolke: keine Änderung')).toBeVisible();
+  await expect(page.locator('tbody tr').filter({ hasText: 'Person 1' }).last()).toContainText('-10');
+});
+
+test('erlaubt zwei Wolken und insgesamt drei Sonderkarten mit Hexe', async ({ page }) => {
+  await startGameWithPlayers(page, 3);
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+  await scoreCurrentRound(page, 2);
+  await page.getByRole('button', { name: 'Stichrunde 3 starten' }).click();
+  await confirmZeroPredictions(page);
+
+  const addBomb = page.getByRole('button', { name: 'Bombe hinzufügen' });
+  const addCloud = page.getByRole('button', { name: 'Wolke hinzufügen' });
+  for (const name of ['Person 1', 'Person 2']) {
+    await addCloud.click();
+    const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
+    await cloudDialog.getByLabel('Gewinnende Person').selectOption({ label: `${name} (Ansage 0)` });
+    await cloudDialog.getByLabel('Vorhersage um eins erhöhen').check();
+    await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+  }
+  await expect(addCloud).toBeDisabled();
+  await expect(addBomb).toBeEnabled();
+  await addBomb.click();
+
+  await expect(addBomb).toBeDisabled();
+  await expect(page.getByText('Wolken ausgespielt: 2 von 2')).toBeVisible();
+  await expect(page.getByText('Sonderkarten-Einsätze: 3 von 3 in dieser Stichrunde.')).toBeVisible();
+});
