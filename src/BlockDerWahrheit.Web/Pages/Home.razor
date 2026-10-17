@@ -343,7 +343,7 @@
     private List<CompletedRound> completedRounds = [];
     private List<CloudEvent> cloudEvents = [];
     private List<StoredGame> savedGames = [];
-    private Dictionary<string, bool> selectedSpecialCards = SpecialCardNames.ToDictionary(card => card, _ => true);
+    private Dictionary<string, bool> selectedSpecialCards = NewSpecialCardSelection();
     private int bombCount;
     private bool showCloudDialog;
     private int cloudPlayerIndex;
@@ -363,7 +363,7 @@
     private bool showCollection;
 
     private int CurrentRoundNumber => completedRounds.Count + 1;
-    private int MaximumRounds => 60 / players.Count;
+    private int MaximumRounds => MaxRounds(players.Count);
     private bool GameComplete => endedEarly || completedRounds.Count == MaximumRounds;
     private int RoundTrickCount => CurrentRoundNumber;
     private int FirstPredictorIndex => (dealerIndex + 1) % players.Count;
@@ -387,6 +387,9 @@
             return selected.Length == 0 ? "keine Sonderkarten" : string.Join(", ", selected);
         }
     }
+
+    private static int MaxRounds(int playerCount) => 60 / playerCount;
+    private static Dictionary<string, bool> NewSpecialCardSelection() => SpecialCardNames.ToDictionary(card => card, _ => true);
 
     protected override async Task OnInitializedAsync()
     {
@@ -423,7 +426,7 @@
         completedRounds = [];
         cloudEvents = [];
         bombCount = 0;
-        selectedSpecialCards = SpecialCardNames.ToDictionary(card => card, _ => true);
+        selectedSpecialCards = NewSpecialCardSelection();
         phase = GamePhase.Setup;
         dealerIndex = 0;
         endedEarly = false;
@@ -518,7 +521,7 @@
 
     private static string GameStatus(StoredGame game)
     {
-        var maximumRounds = 60 / game.Players.Count;
+        var maximumRounds = MaxRounds(game.Players.Count);
         if (game.EndedEarly)
             return $"Abgeschlossen · vorzeitig nach Stichrunde {game.CompletedRounds.Count}";
         if (game.Phase == GamePhase.Results && game.CompletedRounds.Count == maximumRounds)
@@ -549,7 +552,7 @@
             SpecialCardNames.Any(card => !game.SelectedSpecialCards.ContainsKey(card)))
             return false;
 
-        var maximumRounds = 60 / game.Players.Count;
+        var maximumRounds = MaxRounds(game.Players.Count);
         var completedRoundCount = game.CompletedRounds.Count;
         if (completedRoundCount > maximumRounds ||
             ((game.Phase is GamePhase.Predictions or GamePhase.Scoring) && completedRoundCount == maximumRounds) ||
@@ -579,7 +582,8 @@
         if ((game.Phase == GamePhase.Predictions && game.Players.Any(player =>
                  player.OriginalPrediction is not null || player.WonTricks is not null)) ||
             ((game.Phase is GamePhase.Scoring or GamePhase.Results) && game.Players.Any(player =>
-                 player.Prediction is null || player.OriginalPrediction is null)) ||
+                 !IsRoundValue(player.Prediction, currentRoundNumber) ||
+                 !IsRoundValue(player.OriginalPrediction, currentRoundNumber))) ||
             (game.Phase == GamePhase.Results && game.Players.Any(player => player.WonTricks is null)))
             return false;
 
@@ -588,6 +592,8 @@
 
     private static bool IsValidCloudEvent(CloudEvent? cloud, int playerCount) =>
         cloud is not null && cloud.PlayerIndex >= 0 && cloud.PlayerIndex < playerCount && cloud.Change is -1 or 1;
+
+    private static bool IsRoundValue(int? value, int roundNumber) => value is int number && number >= 0 && number <= roundNumber;
 
     private void AddPlayer()
     {

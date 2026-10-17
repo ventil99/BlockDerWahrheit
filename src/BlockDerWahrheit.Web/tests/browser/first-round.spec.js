@@ -652,3 +652,32 @@ test('weist beschädigte gespeicherte Partien ab und überschreibt sie nicht', a
   await expect(page.getByText('Änderungen an diesen Partien sind nicht dauerhaft gespeichert.')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('wizard-punktezahler.partiensammlung.v1'))).toBe(payload);
 });
+
+test('weist Vorhersagen außerhalb des Stichbereichs in gespeicherten Wertungen ab', async ({ page }) => {
+  const payload = JSON.stringify([{
+    Id: 'bad-prediction',
+    Players: ['Ada', 'Bela', 'Cora'].map((Name, index) => ({
+      Name,
+      Prediction: index === 0 ? -2147483648 : 0,
+      OriginalPrediction: 0,
+      WonTricks: null,
+      TotalPoints: 0,
+    })),
+    CompletedRounds: [],
+    CloudEvents: [],
+    BombCount: 0,
+    SelectedSpecialCards: Object.fromEntries(
+      ['Gestaltenwandler', 'Drache', 'Fee', 'Bombe', 'Werwolf', 'Jongleur', 'Wolke', 'Hexe', 'Vampir'].map((card) => [card, true]),
+    ),
+    Phase: 2,
+    DealerIndex: 0,
+    EndedEarly: false,
+    MustPredictionSumDiffer: false,
+  }]);
+  await page.addInitScript((savedPayload) => {
+    localStorage.setItem('wizard-punktezahler.partiensammlung.v1', savedPayload);
+  }, payload);
+  await page.goto('/');
+  await expect(page.getByRole('alert')).toContainText('sind beschädigt und konnten nicht geladen werden');
+  expect(await page.evaluate(() => localStorage.getItem('wizard-punktezahler.partiensammlung.v1'))).toBe(payload);
+});
