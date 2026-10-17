@@ -473,22 +473,22 @@ test('begrenzt Bomben und Wolken ohne Hexe gemeinsam auf die Stichzahl', async (
   await expect(page.getByText('Sonderkarten-Einsätze: 2 von 2 in dieser Stichrunde.')).toBeVisible();
 });
 
-test('wertet Wolke und Bombe im selben Stich ohne Vorhersageänderung', async ({ page }) => {
+test('erfasst bei Bombe und Wolke im selben Stich nur die Bombe', async ({ page }) => {
   await startGameWithPlayers(page, 3);
   await scoreCurrentRound(page, 1);
   await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
-  await confirmZeroPredictions(page);
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', {
+    'Person 1': 1,
+    'Person 2': 0,
+    'Person 3': 0,
+  });
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
 
-  const addCloud = page.getByRole('button', { name: 'Wolke hinzufügen' });
-  await addCloud.click();
-  const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
-  await cloudDialog.getByLabel('In diesem Stich wurde auch eine Bombe gespielt').check();
-  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
-  await expect(page.getByText('Vorhersage: 0', { exact: false }).first()).toBeVisible();
-  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
-  await expect(page.getByRole('alert')).toContainText('Erfasst für jede Wolke im Bombenstich auch eine Bombe');
-
+  await expect(page.getByText('Bombe und Wolke im selben Stich? Erfasst nur die Bombe und löst das Stichergebnis selbst auf.')).toBeVisible();
   await page.getByRole('button', { name: 'Bombe hinzufügen' }).click();
+  await expect(page.getByText('Bomben ausgespielt: 1 von 2')).toBeVisible();
+  await expect(page.getByText('Wolken ausgespielt: 0 von 2')).toBeVisible();
+  await expect(page.getByText('Vorhersage: 1', { exact: false }).first()).toBeVisible();
 
   await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
     'Person 1': 1,
@@ -496,8 +496,9 @@ test('wertet Wolke und Bombe im selben Stich ohne Vorhersageänderung', async ({
     'Person 3': 0,
   });
   await page.getByRole('button', { name: 'Wertung berechnen' }).click();
-  await expect(page.getByText('Wolkenereignisse: Bombe + Wolke: keine Änderung')).toBeVisible();
-  await expect(page.locator('tbody tr').filter({ hasText: 'Person 1' }).last()).toContainText('-10');
+  await expect(page.getByText('Ausgespielte Bomben: 1')).toBeVisible();
+  await expect(page.getByText('Wolkenereignisse:')).toHaveCount(0);
+  await expect(page.locator('tbody tr').filter({ hasText: 'Person 1' }).last()).toContainText('+30');
 });
 
 test('erlaubt zwei Wolken und insgesamt drei Sonderkarten mit Hexe', async ({ page }) => {

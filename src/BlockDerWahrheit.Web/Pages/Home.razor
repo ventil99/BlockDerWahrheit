@@ -130,6 +130,10 @@
             {
                 <fieldset class="setup-group bomb-capture">
                     <legend>Sonderkarten erfassen</legend>
+                    @if (selectedSpecialCards["Bombe"] && selectedSpecialCards["Wolke"])
+                    {
+                        <p class="sum-note">Bombe und Wolke im selben Stich? Erfasst nur die Bombe und löst das Stichergebnis selbst auf.</p>
+                    }
                     @if (selectedSpecialCards["Bombe"])
                     {
                         <button class="secondary-button bomb-add-button" type="button" aria-label="Bombe hinzufügen" disabled="@(!CanRecordBomb)" @onclick="RecordBomb"><span aria-hidden="true">+</span> Bombe hinzufügen</button>
@@ -209,7 +213,7 @@
                         }
                         @if (round.CloudEvents.Count > 0)
                         {
-                            <p class="muted">Wolkenereignisse: @string.Join("; ", round.CloudEvents.Select(cloud => cloud.Bombed ? "Bombe + Wolke: keine Änderung" : players[cloud.PlayerIndex!.Value].Name + ": " + Signed(cloud.Change)))</p>
+                            <p class="muted">Wolkenereignisse: @string.Join("; ", round.CloudEvents.Select(cloud => players[cloud.PlayerIndex].Name + ": " + Signed(cloud.Change)))</p>
                         }
                         <div class="results-table-wrap">
                             <table>
@@ -240,31 +244,20 @@
             <div class="dialog-backdrop" role="presentation" @onclick="CloseCloudDialog">
                 <section class="cloud-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-dialog-title" tabindex="-1" @onclick:stopPropagation="true" @onkeydown="HandleCloudDialogKeyDown">
                     <h2 id="cloud-dialog-title">Wolkenstich erfassen</h2>
-                    <label class="setting-option">
-                        <input type="checkbox" @bind="cloudOnBombedTrick" autofocus />
-                        <span>In diesem Stich wurde auch eine Bombe gespielt</span>
-                    </label>
-                    @if (cloudOnBombedTrick)
-                    {
-                        <p class="muted">Bei Bombe und Wolke im selben Stich bleibt die Vorhersage unverändert.</p>
-                    }
-                    else
-                    {
-                        <div class="field">
-                            <label for="cloud-player">Gewinnende Person</label>
-                            <select id="cloud-player" @bind="cloudPlayerIndex">
-                                @for (var index = 0; index < players.Count; index++)
-                                {
-                                    <option value="@index">@players[index].Name (Vorhersage @players[index].Prediction)</option>
-                                }
-                            </select>
-                        </div>
-                        <fieldset class="setup-group">
-                            <legend>Vorhersage ändern</legend>
-                            <label class="setting-option"><input type="radio" name="cloud-change" checked="@(cloudChange == -1)" @onchange="() => cloudChange = -1" /> <span>Vorhersage um eins verringern (−1)</span></label>
-                            <label class="setting-option"><input type="radio" name="cloud-change" checked="@(cloudChange == 1)" @onchange="() => cloudChange = 1" /> <span>Vorhersage um eins erhöhen (+1)</span></label>
-                        </fieldset>
-                    }
+                    <div class="field">
+                        <label for="cloud-player">Gewinnende Person</label>
+                        <select id="cloud-player" @bind="cloudPlayerIndex">
+                            @for (var index = 0; index < players.Count; index++)
+                            {
+                                <option value="@index">@players[index].Name (Vorhersage @players[index].Prediction)</option>
+                            }
+                        </select>
+                    </div>
+                    <fieldset class="setup-group">
+                        <legend>Vorhersage ändern</legend>
+                        <label class="setting-option"><input type="radio" name="cloud-change" checked="@(cloudChange == -1)" @onchange="() => cloudChange = -1" /> <span>Vorhersage um eins verringern (−1)</span></label>
+                        <label class="setting-option"><input type="radio" name="cloud-change" checked="@(cloudChange == 1)" @onchange="() => cloudChange = 1" /> <span>Vorhersage um eins erhöhen (+1)</span></label>
+                    </fieldset>
                     @if (!string.IsNullOrWhiteSpace(cloudError))
                     {
                         <p class="form-error" role="alert">@cloudError</p>
@@ -290,7 +283,6 @@
     private readonly List<CloudEvent> cloudEvents = [];
     private int bombCount;
     private bool showCloudDialog;
-    private bool cloudOnBombedTrick;
     private int cloudPlayerIndex;
     private int cloudChange = 1;
     private string cloudError = "";
@@ -398,7 +390,6 @@
 
         cloudPlayerIndex = FirstPredictorIndex;
         cloudChange = 1;
-        cloudOnBombedTrick = false;
         cloudError = "";
         showCloudDialog = true;
     }
@@ -409,29 +400,22 @@
         if (phase != GamePhase.Scoring || !selectedSpecialCards["Wolke"] || !CanRecordCloud)
             return;
 
-        if (cloudOnBombedTrick)
+        if (cloudPlayerIndex < 0 || cloudPlayerIndex >= players.Count || cloudChange is not (-1 or 1))
         {
-            cloudEvents.Add(new CloudEvent(null, 0, true));
+            cloudError = "Bitte wählt eine gewinnende Person und eine Änderung um eins.";
+            return;
         }
-        else
+
+        var player = players[cloudPlayerIndex];
+        var changedPrediction = player.Prediction!.Value + cloudChange;
+        if (changedPrediction < 0 || changedPrediction > RoundTrickCount)
         {
-            if (cloudPlayerIndex < 0 || cloudPlayerIndex >= players.Count || cloudChange is not (-1 or 1))
-            {
-                cloudError = "Bitte wählt eine gewinnende Person und eine Änderung um eins.";
-                return;
-            }
-
-            var player = players[cloudPlayerIndex];
-            var changedPrediction = player.Prediction!.Value + cloudChange;
-            if (changedPrediction < 0 || changedPrediction > RoundTrickCount)
-            {
-                cloudError = $"Die gültige Vorhersage muss zwischen 0 und {RoundTrickCount} liegen.";
-                return;
-            }
-
-            player.Prediction = changedPrediction;
-            cloudEvents.Add(new CloudEvent(cloudPlayerIndex, cloudChange, false));
+            cloudError = $"Die gültige Vorhersage muss zwischen 0 und {RoundTrickCount} liegen.";
+            return;
         }
+
+        player.Prediction = changedPrediction;
+        cloudEvents.Add(new CloudEvent(cloudPlayerIndex, cloudChange));
 
         showCloudDialog = false;
     }
@@ -451,12 +435,6 @@
     private void FinishRound()
     {
         scoringError = "";
-        if (cloudEvents.Count(cloud => cloud.Bombed) > bombCount)
-        {
-            scoringError = "Erfasst für jede Wolke im Bombenstich auch eine Bombe.";
-            return;
-        }
-
         if (players.Any(player => player.WonTricks is null || player.WonTricks < 0 || player.WonTricks > RoundTrickCount))
         {
             scoringError = $"Die gewonnenen Stiche müssen je Person zwischen 0 und {RoundTrickCount} liegen.";
@@ -477,7 +455,7 @@
             var difference = Math.Abs(prediction - wonTricks);
             var points = difference == 0 ? 20 + 10 * wonTricks : -10 * difference;
             player.TotalPoints += points;
-            var cloudChange = cloudEvents.Where(cloud => !cloud.Bombed && cloud.PlayerIndex == players.IndexOf(player)).Sum(cloud => cloud.Change);
+            var cloudChange = cloudEvents.Where(cloud => cloud.PlayerIndex == players.IndexOf(player)).Sum(cloud => cloud.Change);
             return new RoundPlayerResult(player, originalPrediction, cloudChange, prediction, wonTricks, points, player.TotalPoints);
         }).ToList();
 
@@ -522,7 +500,7 @@
     }
 
     private sealed record CompletedRound(int Number, int DealerIndex, List<RoundPlayerResult> Results, int BombCount, List<CloudEvent> CloudEvents);
-    private sealed record CloudEvent(int? PlayerIndex, int Change, bool Bombed);
+    private sealed record CloudEvent(int PlayerIndex, int Change);
     private sealed record RoundPlayerResult(Participant Player, int OriginalPrediction, int CloudChange, int Prediction, int WonTricks, int Points, int TotalPoints);
 
     private enum GamePhase { Setup, Predictions, Scoring, Results }
