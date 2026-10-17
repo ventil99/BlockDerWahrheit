@@ -312,8 +312,12 @@ FakesAssemblies/
 node_modules/
 
 # Playwright browser-test output
-/playwright-report/
-/test-results/
+**/playwright-report/
+**/test-results/
+
+# Local Finder and IDE files
+.DS_Store
+.idea/
 
 # Visual Studio 6 build log
 *.plg

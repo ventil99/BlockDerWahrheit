@@ -2,10 +2,33 @@
 
 Deutschsprachige Blazor-WebAssembly-PWA für Wizard-Partien. Aktuell unterstützt sie die Einrichtung mit drei bis sechs Spielenden sowie Vorhersage und Wertung der ersten Stichrunde.
 
+## Voraussetzungen
+
+Zum Starten wird das .NET 10 SDK benötigt. Für die Browserprüfungen zusätzlich Node.js 24.
+
 ## Starten
 
-Mit dem .NET 10 SDK im Repository `dotnet run` ausführen und die angezeigte lokale Adresse im Browser öffnen.
+Im Repository-Wurzelverzeichnis ausführen:
 
-## Browserprüfungen
+```sh
+dotnet run --project src/BlockDerWahrheit.Web/BlockDerWahrheit.Web.csproj --no-launch-profile --urls http://127.0.0.1:5178
+```
 
-Mit Node.js 24 und dem .NET 10 SDK `npm install`, einmalig `npx playwright install chromium` und anschließend `npm run test:browser` ausführen.
+Anschließend im Browser <http://127.0.0.1:5178> öffnen. Die `wwwroot/index.html` nicht direkt über `file://` starten.
+
+## Bauen und Browserprüfungen
+
+Den Build im Repository-Wurzelverzeichnis starten:
+
+```sh
+dotnet build src/BlockDerWahrheit.slnx
+```
+
+Für die Browserprüfungen in den Projektordner wechseln. Chromium muss nur einmal installiert werden:
+
+```sh
+cd src/BlockDerWahrheit.Web
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
