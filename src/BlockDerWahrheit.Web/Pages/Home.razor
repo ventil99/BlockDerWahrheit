@@ -135,7 +135,7 @@
                         @foreach (var trick in Enumerable.Range(1, RoundTrickCount))
                         {
                             var count = bombEvents.Count(bombTrick => bombTrick == trick);
-                            <button class="bomb-trick-button" type="button" aria-label="Bombe bei Stich @trick erfassen" @onclick="() => RecordBomb(trick)">
+                            <button class="bomb-trick-button" type="button" aria-label="Bombe bei Stich @trick erfassen" disabled="@(bombEvents.Count >= MaxBombUses)" @onclick="() => RecordBomb(trick)">
                                 Stich @trick · Bombe erfassen
                                 @if (count > 0)
                                 {
@@ -144,7 +144,7 @@
                             </button>
                         }
                     </div>
-                    <p class="sum-note">Erfasste Bomben: @(string.IsNullOrEmpty(CurrentBombSummary) ? "keine" : CurrentBombSummary)</p>
+                    <p class="sum-note">Erfasste Bomben: @(string.IsNullOrEmpty(CurrentBombSummary) ? "keine" : CurrentBombSummary) · Höchstens @MaxBombUses @(MaxBombUses == 1 ? "Bombe" : "Bomben") pro Stichrunde.</p>
                 </fieldset>
             }
 
@@ -262,6 +262,7 @@
     private int PredictionSum => players.Sum(player => player.Prediction ?? 0);
     private int WonTrickSum => players.Sum(player => player.WonTricks ?? 0);
     private int BombedTrickCount => bombEvents.Distinct().Count();
+    private int MaxBombUses => selectedSpecialCards["Hexe"] && RoundTrickCount > 1 ? 2 : 1;
     private string CurrentBombSummary => FormatBombs(bombEvents);
     private string PredictionSumRule => mustPredictionSumDiffer ? "muss von der Stichzahl abweichen." : "darf der Stichzahl entsprechen.";
     private string SpecialCardsSummary
@@ -327,7 +328,7 @@
 
     private void RecordBomb(int trickNumber)
     {
-        if (phase == GamePhase.Scoring && selectedSpecialCards["Bombe"] && trickNumber is >= 1 && trickNumber <= RoundTrickCount)
+        if (phase == GamePhase.Scoring && selectedSpecialCards["Bombe"] && bombEvents.Count < MaxBombUses && trickNumber is >= 1 && trickNumber <= RoundTrickCount)
             bombEvents.Add(trickNumber);
     }
 

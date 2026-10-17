@@ -259,7 +259,9 @@ test('erfasst einen Bombenstich und wertet nur die übrigen Stiche', async ({ pa
   await startGameWithPlayers(page, 3);
   await confirmZeroPredictions(page);
 
-  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
+  const firstTrickBomb = page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ });
+  await firstTrickBomb.click();
+  await expect(firstTrickBomb).toBeDisabled();
   await expect(page.getByText('Erfasste Bomben: Stich 1 (1)')).toBeVisible();
   await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
     'Person 1': 0,
@@ -280,6 +282,8 @@ test('erfasst Bomben in späteren Stichen derselben Stichrunde', async ({ page }
 
   await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
   await page.getByRole('button', { name: /Bombe bei Stich 2 erfassen/ }).click();
+  await expect(page.getByRole('button', { name: /Bombe bei Stich/ }).nth(0)).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Bombe bei Stich/ }).nth(1)).toBeDisabled();
   await expect(page.getByText('Erfasste Bomben: Stich 1 (1), Stich 2 (1)')).toBeVisible();
   await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
     'Person 1': 0,
@@ -294,14 +298,17 @@ test('erfasst Bomben in späteren Stichen derselben Stichrunde', async ({ page }
 
 test('zieht mehrere Bomben im selben Stich nur einmal ab', async ({ page }) => {
   await startGameWithPlayers(page, 3);
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
   await confirmZeroPredictions(page);
 
   const bombButton = page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ });
   await bombButton.click();
   await bombButton.click();
+  await expect(bombButton).toBeDisabled();
   await expect(page.getByText('Erfasste Bomben: Stich 1 (2)')).toBeVisible();
   await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
-    'Person 1': 0,
+    'Person 1': 1,
     'Person 2': 0,
     'Person 3': 0,
   });
@@ -333,4 +340,18 @@ test('zeigt die Bombenerfassung nur bei gewählter Bombe', async ({ page }) => {
   await confirmZeroPredictions(page);
 
   await expect(page.getByRole('button', { name: /Bombe bei Stich/ })).toHaveCount(0);
+});
+
+test('erlaubt ohne Hexe höchstens eine Bombe in der Stichrunde', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByLabel('Hexe').uncheck();
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+  await confirmZeroPredictions(page);
+
+  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
+  await expect(page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Bombe bei Stich 2 erfassen/ })).toBeDisabled();
 });
