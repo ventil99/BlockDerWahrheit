@@ -125,7 +125,8 @@ tbody th { color: var(--ink); font-weight: 600; }
 .saved-game-open { display: grid; gap: .3rem; min-width: 0; padding: .2rem; border: 0; color: var(--muted); background: transparent; text-align: left; cursor: pointer; }
 .saved-game-open strong { color: var(--ink); font-size: .95rem; overflow-wrap: anywhere; }
 .saved-game-open span { font-size: .78rem; line-height: 1.4; overflow-wrap: anywhere; }
-.saved-game-delete { min-height: 2.7rem; padding: .55rem .8rem; }
+.saved-game-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.saved-game-actions .secondary-button { min-height: 2.7rem; padding: .55rem .8rem; }
 .storage-error { margin: .8rem 0 0; padding: .8rem 1rem; border: 1px solid #e6b4bd; border-radius: .8rem; color: #7c1b33; background: #fff1f3; font-size: .85rem; line-height: 1.45; }
 
 .dialog-backdrop { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 1rem; background: #1c234066; }
@@ -152,5 +153,5 @@ tbody th { color: var(--ink); font-weight: 600; }
     thead th { font-size: .62rem; }
     th:first-child { width: 29%; }
     .saved-game { grid-template-columns: minmax(0, 1fr); }
-    .saved-game-delete { justify-self: start; }
+    .saved-game-actions { justify-content: flex-start; }
 }
