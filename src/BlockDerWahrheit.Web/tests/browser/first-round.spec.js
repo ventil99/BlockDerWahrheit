@@ -13,6 +13,24 @@ async function fillByRowName(rows, selector, values) {
   }
 }
 
+async function scoreCurrentRound(page, trickCount) {
+  for (const input of await page.getByRole('spinbutton').all()) await input.fill('0');
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+  await expect(page.getByRole('heading', { name: 'Gewonnene Stiche' })).toBeVisible();
+  const scoreInputs = await page.getByRole('spinbutton').all();
+  for (const [index, input] of scoreInputs.entries()) await input.fill(index === 0 ? String(trickCount) : '0');
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+}
+
+async function startGameWithPlayers(page, playerCount) {
+  await page.goto('/');
+  for (let index = 3; index < playerCount; index++) {
+    await page.getByRole('button', { name: 'Spielende hinzufügen' }).click();
+  }
+  await fillNames(page, Array.from({ length: playerCount }, (_, index) => `Person ${index + 1}`));
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+}
+
 test('richtet eine Partie ein, prüft Eingaben und wertet eine korrekte Ansage', async ({ page }) => {
   const names = ['<b>Ada</b>', 'Bela', 'Cora'];
   await page.goto('/');
@@ -99,4 +117,63 @@ test('wertet eine falsche Vorhersage und Nullvorhersagen korrekt', async ({ page
   expect(resultRows.find((row) => row.includes('Ada'))).toContain('-10');
   expect(resultRows.find((row) => row.includes('Bela'))).toContain('+20');
   expect(resultRows.find((row) => row.includes('Cora'))).toContain('+20');
+});
+
+test('zeigt den regulären Rundenspielplan für drei bis sechs Spielende', async ({ page }) => {
+  for (const [playerCount, roundCount] of [[3, 20], [4, 15], [5, 12], [6, 10]]) {
+    await startGameWithPlayers(page, playerCount);
+    await expect(page.getByText(`Stichrunde 1 von ${roundCount}`)).toBeVisible();
+  }
+});
+
+test('wechselt nach einer gewerteten Stichrunde Geber, Vorhersage und ersten Stich', async ({ page }) => {
+  const names = ['Ada', 'Bela', 'Cora'];
+  await page.goto('/');
+  await fillNames(page, names);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  const firstRoundRoles = await page.locator('.turn-item p strong').allTextContents();
+  const dealerSeat = names.indexOf(firstRoundRoles[0]);
+  await scoreCurrentRound(page, 1);
+  await expect(page.getByText('Bisherige Ergebnisse (1 Stichrunde)')).toBeVisible();
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+
+  const nextRoundRoles = await page.locator('.turn-item p strong').allTextContents();
+  const nextDealerSeat = (dealerSeat + 1) % names.length;
+  expect(nextRoundRoles[0]).toBe(names[nextDealerSeat]);
+  expect(nextRoundRoles[1]).toBe(names[(nextDealerSeat + 1) % names.length]);
+  expect(nextRoundRoles[2]).toBe(nextRoundRoles[1]);
+  await expect(page.getByText('Stichrunde 2 von 20')).toBeVisible();
+});
+
+test('behält den gewerteten Stand bei einem ausdrücklich vorzeitigen Partieende', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await scoreCurrentRound(page, 1);
+  const totalsBeforeEnding = await page.locator('tbody tr').allTextContents();
+
+  await page.getByRole('button', { name: 'Partie vorzeitig beenden' }).click();
+  await expect(page.getByText('Partie vorzeitig beendet')).toBeVisible();
+  await expect(page.getByText('Der gewertete Endstand nach Stichrunde 1 bleibt erhalten.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Stichrunde 2 starten' })).toHaveCount(0);
+  expect(await page.locator('tbody tr').allTextContents()).toEqual(totalsBeforeEnding);
+});
+
+test('schließt alle regulären Rundenspielpläne ab und bietet danach keine nächste Runde an', async ({ page }) => {
+  for (const [playerCount, roundCount] of [[3, 20], [4, 15], [5, 12], [6, 10]]) {
+    await startGameWithPlayers(page, playerCount);
+
+    for (let round = 1; round <= roundCount; round++) {
+      await expect(page.getByText(`Stichrunde ${round} von ${roundCount}`)).toBeVisible();
+      await scoreCurrentRound(page, round);
+      if (round < roundCount) {
+        await page.getByRole('button', { name: `Stichrunde ${round + 1} starten` }).click();
+      }
+    }
+
+    await expect(page.getByText('Partie abgeschlossen')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Stichrunde \d+ starten/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Partie vorzeitig beenden' })).toHaveCount(0);
+    await expect(page.getByText(`Bisherige Ergebnisse (${roundCount} Stichrunden)`)).toBeVisible();
+  }
 });
