@@ -32,3 +32,21 @@ npm ci
 npx playwright install chromium
 npm run test:browser
 ```
+
+## Deployment auf GitHub Pages
+
+Die Anwendung wird unter <https://ventil99.github.io/BlockDerWahrheit/> veröffentlicht.
+Im Repository muss unter **Settings → Pages → Build and deployment → Source**
+die Option **GitHub Actions** ausgewählt sein.
+
+Der Workflow `.github/workflows/deploy-pages.yml` prüft den Release-Publish bei
+Pull Requests nach `main`. Nach einem Push bzw. Merge nach `main` veröffentlicht
+er `publish/wwwroot` automatisch auf GitHub Pages. Über **Actions → Deploy GitHub
+Pages → Run workflow** kann das Deployment auf `main` erneut gestartet werden.
+
+Nur im Workflow wird der HTML-Basispfad vor dem Publish auf `/BlockDerWahrheit/`
+gesetzt, damit auch die Prüfsummen des PWA-Caches stimmen. Lokal bleibt `/`
+erhalten; der veröffentlichte Service Worker verwendet seinen Registrierungsbereich.
+
+Nach dem ersten Deployment die Seite öffnen, eine Partie starten und nach
+erfolgreicher Service-Worker-Aktivierung das Neuladen im Offline-Modus prüfen.
