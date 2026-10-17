@@ -31,6 +31,7 @@ cd src/BlockDerWahrheit.Web
 npm ci
 npx playwright install chromium
 npm run test:browser
+npm run test:offline
 ```
 
 ## Deployment auf GitHub Pages
