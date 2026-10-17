@@ -259,10 +259,10 @@ test('erfasst einen Bombenstich und wertet nur die übrigen Stiche', async ({ pa
   await startGameWithPlayers(page, 3);
   await confirmZeroPredictions(page);
 
-  const firstTrickBomb = page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ });
-  await firstTrickBomb.click();
-  await expect(firstTrickBomb).toBeDisabled();
-  await expect(page.getByText('Erfasste Bomben: Stich 1 (1)')).toBeVisible();
+  const addBomb = page.getByRole('button', { name: 'Bombe hinzufügen' });
+  await addBomb.click();
+  await expect(addBomb).toBeDisabled();
+  await expect(page.getByText('Bomben ausgespielt: 1 von 1')).toBeVisible();
   await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
     'Person 1': 0,
     'Person 2': 0,
@@ -271,20 +271,22 @@ test('erfasst einen Bombenstich und wertet nur die übrigen Stiche', async ({ pa
   await page.getByRole('button', { name: 'Wertung berechnen' }).click();
 
   await expect(page.getByRole('heading', { name: 'Euer Ergebnis' })).toBeVisible();
-  await expect(page.getByText('Erfasste Bomben: Stich 1 (1)')).toBeVisible();
+  await expect(page.getByText('Ausgespielte Bomben: 1')).toBeVisible();
 });
 
-test('erfasst Bomben in späteren Stichen derselben Stichrunde', async ({ page }) => {
+test('erfasst Bomben unabhängig vom Stich und deaktiviert Plus nach zwei Bomben', async ({ page }) => {
   await startGameWithPlayers(page, 3);
   await scoreCurrentRound(page, 1);
   await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
   await confirmZeroPredictions(page);
 
-  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
-  await page.getByRole('button', { name: /Bombe bei Stich 2 erfassen/ }).click();
-  await expect(page.getByRole('button', { name: /Bombe bei Stich/ }).nth(0)).toBeDisabled();
-  await expect(page.getByRole('button', { name: /Bombe bei Stich/ }).nth(1)).toBeDisabled();
-  await expect(page.getByText('Erfasste Bomben: Stich 1 (1), Stich 2 (1)')).toBeVisible();
+  const addBomb = page.getByRole('button', { name: 'Bombe hinzufügen' });
+  await addBomb.click();
+  await expect(page.getByText('Bomben ausgespielt: 1 von 2')).toBeVisible();
+  await addBomb.click();
+  await expect(addBomb).toBeDisabled();
+  await expect(page.getByText('Bomben ausgespielt: 2 von 2')).toBeVisible();
+  await expect(page.getByText('Gewonnene Stiche: 0 von 0.')).toBeVisible();
   await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
     'Person 1': 0,
     'Person 2': 0,
@@ -293,34 +295,13 @@ test('erfasst Bomben in späteren Stichen derselben Stichrunde', async ({ page }
   await page.getByRole('button', { name: 'Wertung berechnen' }).click();
 
   await expect(page.getByRole('heading', { name: 'Euer Ergebnis' })).toBeVisible();
-  await expect(page.getByText('Erfasste Bomben: Stich 1 (1), Stich 2 (1)')).toBeVisible();
-});
-
-test('zieht mehrere Bomben im selben Stich nur einmal ab', async ({ page }) => {
-  await startGameWithPlayers(page, 3);
-  await scoreCurrentRound(page, 1);
-  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
-  await confirmZeroPredictions(page);
-
-  const bombButton = page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ });
-  await bombButton.click();
-  await bombButton.click();
-  await expect(bombButton).toBeDisabled();
-  await expect(page.getByText('Erfasste Bomben: Stich 1 (2)')).toBeVisible();
-  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
-    'Person 1': 1,
-    'Person 2': 0,
-    'Person 3': 0,
-  });
-  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
-
-  await expect(page.getByRole('heading', { name: 'Euer Ergebnis' })).toBeVisible();
+  await expect(page.getByText('Ausgespielte Bomben: 2')).toBeVisible();
 });
 
 test('weist eine falsche Summe gewonnener Stiche nach einem Bombenstich ab', async ({ page }) => {
   await startGameWithPlayers(page, 3);
   await confirmZeroPredictions(page);
-  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
+  await page.getByRole('button', { name: 'Bombe hinzufügen' }).click();
   await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {
     'Person 1': 1,
     'Person 2': 0,
@@ -339,7 +320,7 @@ test('zeigt die Bombenerfassung nur bei gewählter Bombe', async ({ page }) => {
   await page.getByRole('button', { name: 'Partie starten' }).click();
   await confirmZeroPredictions(page);
 
-  await expect(page.getByRole('button', { name: /Bombe bei Stich/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Bombe hinzufügen' })).toHaveCount(0);
 });
 
 test('erlaubt ohne Hexe höchstens eine Bombe in der Stichrunde', async ({ page }) => {
@@ -351,9 +332,10 @@ test('erlaubt ohne Hexe höchstens eine Bombe in der Stichrunde', async ({ page 
   await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
   await confirmZeroPredictions(page);
 
-  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
-  await expect(page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ })).toBeDisabled();
-  await expect(page.getByRole('button', { name: /Bombe bei Stich 2 erfassen/ })).toBeDisabled();
+  const addBomb = page.getByRole('button', { name: 'Bombe hinzufügen' });
+  await addBomb.click();
+  await expect(addBomb).toBeDisabled();
+  await expect(page.getByText('Bomben ausgespielt: 1 von 1')).toBeVisible();
 });
 
 test('zeigt nach zwei Bomben in Stichrunde drei nur einen verteilbaren Stich', async ({ page }) => {
@@ -364,8 +346,11 @@ test('zeigt nach zwei Bomben in Stichrunde drei nur einen verteilbaren Stich', a
   await page.getByRole('button', { name: 'Stichrunde 3 starten' }).click();
   await confirmZeroPredictions(page);
 
-  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
-  await page.getByRole('button', { name: /Bombe bei Stich 2 erfassen/ }).click();
+  const addBomb = page.getByRole('button', { name: 'Bombe hinzufügen' });
+  await addBomb.click();
+  await addBomb.click();
 
+  await expect(addBomb).toBeDisabled();
+  await expect(page.getByText('Bomben ausgespielt: 2 von 2')).toBeVisible();
   await expect(page.getByText('Gewonnene Stiche: 0 von 1.')).toBeVisible();
 });
