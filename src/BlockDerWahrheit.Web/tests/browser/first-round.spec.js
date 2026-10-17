@@ -593,7 +593,7 @@ test('startet aus einer abgeschlossenen Partienvorlage eine bearbeitbare Partie 
   const source = page.getByRole('article').filter({ hasText: 'Ada, Bela, Cora' });
   const sourceSummary = await source.innerText();
   await expect(source).toContainText('Abgeschlossen · vorzeitig nach Stichrunde 2');
-  await page.getByRole('button', { name: 'Neue Partie aus Vorlage: Ada, Bela, Cora' }).click();
+  await page.getByRole('button', { name: 'Vorlage verwenden: Ada, Bela, Cora' }).click();
 
   await expect(page.getByLabel('Name für Spielende 1')).toHaveValue('Ada');
   await expect(page.getByLabel('Name für Spielende 2')).toHaveValue('Bela');

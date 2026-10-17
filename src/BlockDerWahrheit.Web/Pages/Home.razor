@@ -57,7 +57,7 @@
                                 <span>@GameScores(game)</span>
                             </button>
                             <div class="saved-game-actions">
-                                <button class="secondary-button" type="button" aria-label="Neue Partie aus Vorlage: @GamePlayers(game)" @onclick="() => CreateGameFromTemplate(game.Id)">Als Vorlage verwenden</button>
+                                <button class="secondary-button" type="button" aria-label="Vorlage verwenden: @GamePlayers(game)" @onclick="() => CreateGameFromTemplate(game.Id)">Als Vorlage verwenden</button>
                                 <button class="secondary-button" type="button" aria-label="Partie @GamePlayers(game) löschen" @onclick="() => DeleteGame(game.Id)">Löschen</button>
                             </div>
                         </article>
