@@ -367,7 +367,8 @@ test('wendet eine Wolkenänderung auf Vorhersage und Wertung an', async ({ page 
   });
   await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
 
-  await page.getByRole('button', { name: 'Wolke hinzufügen' }).click();
+  const addCloud = page.getByRole('button', { name: 'Wolke hinzufügen' });
+  await addCloud.click();
   const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
   await expect(cloudDialog).toBeVisible();
   await cloudDialog.getByLabel('Gewinnende Person').selectOption({ label: 'Person 1 (Vorhersage 0)' });
@@ -378,6 +379,8 @@ test('wendet eine Wolkenänderung auf Vorhersage und Wertung an', async ({ page 
 
   await cloudDialog.getByLabel('Vorhersage um eins erhöhen').check();
   await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+  await expect(addCloud).toBeDisabled();
+  await expect(page.getByText('Wolken ausgespielt: 1 von 1')).toBeVisible();
 
   await expect(page.locator('.score-name').filter({ hasText: 'Person 1' })).toContainText('Vorhersage: 1');
   await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', {

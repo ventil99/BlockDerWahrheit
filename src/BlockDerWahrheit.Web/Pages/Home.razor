@@ -316,8 +316,9 @@
     private int MaxRoundSpecialUses => Math.Min(selectedSpecialCards["Hexe"] ? 3 : 2, RoundTrickCount);
     private int CloudCount => cloudEvents.Count;
     private int SpecialCardUseCount => bombCount + CloudCount;
-    private bool CanRecordBomb => bombCount < MaxUsesPerCard && SpecialCardUseCount < MaxRoundSpecialUses;
-    private bool CanRecordCloud => CloudCount < MaxUsesPerCard && SpecialCardUseCount < MaxRoundSpecialUses;
+    private bool CanRecordAnotherSpecialCard => SpecialCardUseCount < MaxRoundSpecialUses;
+    private bool CanRecordBomb => bombCount < MaxUsesPerCard && CanRecordAnotherSpecialCard;
+    private bool CanRecordCloud => CloudCount < MaxUsesPerCard && CanRecordAnotherSpecialCard;
     private string PredictionSumRule => mustPredictionSumDiffer ? "muss von der Stichzahl abweichen." : "darf der Stichzahl entsprechen.";
     private string SpecialCardsSummary
     {
