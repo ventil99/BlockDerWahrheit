@@ -554,6 +554,7 @@ test('bewahrt mehrere unabhängige Partien und zeigt abgeschlossene Partien in d
   await expect(page.getByRole('article').filter({ hasText: 'Ada, Bela, Cora' })).toContainText('Abgeschlossen');
   await page.getByRole('button', { name: 'Partie öffnen: Ada, Bela, Cora' }).click();
   await expect(page.getByText('Partie vorzeitig beendet')).toBeVisible();
+  await expect(page.getByText('Bisherige Ergebnisse (1 Stichrunde)')).toBeVisible();
   await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
   await page.getByRole('button', { name: 'Partie öffnen: Dora, Erik, Fina' }).click();
   await expect(page.getByRole('heading', { name: 'Vorhersagen' })).toBeVisible();
@@ -623,4 +624,31 @@ test('meldet einen Fehler, wenn der Browser den Speicherzugriff verweigert', asy
   await expect(page.getByText('Änderungen an diesen Partien sind nicht dauerhaft gespeichert.')).toBeVisible();
   await expect(page.getByLabel('Partien', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Gespeicherte Partien')).toHaveCount(0);
+});
+
+test('weist beschädigte gespeicherte Partien ab und überschreibt sie nicht', async ({ page }) => {
+  const payload = JSON.stringify([{
+    Id: 'broken',
+    Players: [],
+    CompletedRounds: [],
+    CloudEvents: [],
+    BombCount: 0,
+    SelectedSpecialCards: {},
+    Phase: 1,
+    DealerIndex: 0,
+    EndedEarly: false,
+    MustPredictionSumDiffer: false,
+  }]);
+  await page.addInitScript((savedPayload) => {
+    localStorage.setItem('wizard-punktezahler.partiensammlung.v1', savedPayload);
+  }, payload);
+  await page.goto('/');
+  await expect(page.getByRole('alert')).toContainText('sind beschädigt und konnten nicht geladen werden');
+  await expect(page.getByRole('heading', { name: 'Wer spielt mit?' })).toBeVisible();
+
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await expect(page.getByText('Änderungen an diesen Partien sind nicht dauerhaft gespeichert.')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('wizard-punktezahler.partiensammlung.v1'))).toBe(payload);
 });

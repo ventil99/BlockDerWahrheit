@@ -358,6 +358,7 @@
     private string scoringError = "";
     private string storageError = "";
     private string currentGameId = "";
+    private bool storageLoadFailed;
     private bool initialized;
     private bool showCollection;
 
@@ -392,12 +393,22 @@
         try
         {
             var json = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
-            if (!string.IsNullOrEmpty(json))
-                savedGames = JsonSerializer.Deserialize<List<StoredGame>>(json) ?? [];
+            if (json is not null)
+            {
+                var games = JsonSerializer.Deserialize<List<StoredGame>>(json);
+                if (IsValidCollection(games))
+                    savedGames = games!;
+                else
+                {
+                    storageLoadFailed = true;
+                    storageError = "Gespeicherte Partien sind beschädigt und konnten nicht geladen werden. Vorhandene Browserdaten bleiben unverändert.";
+                }
+            }
         }
         catch (Exception exception) when (exception is JSException or JsonException or NotSupportedException or InvalidOperationException)
         {
-            storageError = "Gespeicherte Partien konnten nicht geladen werden.";
+            storageLoadFailed = true;
+            storageError = "Gespeicherte Partien konnten nicht geladen werden. Vorhandene Browserdaten bleiben unverändert.";
         }
 
         showCollection = savedGames.Count > 0;
@@ -487,6 +498,9 @@
 
     private async Task PersistCollection()
     {
+        if (storageLoadFailed)
+            return;
+
         try
         {
             await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(savedGames));
@@ -519,6 +533,61 @@
         };
         return $"Offen · Stichrunde {roundNumber} von {maximumRounds} · {phaseName}";
     }
+
+    private static bool IsValidCollection(List<StoredGame>? games) =>
+        games is not null &&
+        games.All(IsValidStoredGame) &&
+        games.Select(game => game.Id).Distinct(StringComparer.Ordinal).Count() == games.Count;
+
+    private static bool IsValidStoredGame(StoredGame? game)
+    {
+        if (game is null || string.IsNullOrWhiteSpace(game.Id) || game.Players is null ||
+            game.Players.Count is < MinPlayers or > MaxPlayers || game.CompletedRounds is null ||
+            game.CloudEvents is null || game.SelectedSpecialCards is null ||
+            !Enum.IsDefined(game.Phase) || game.Phase == GamePhase.Setup ||
+            game.DealerIndex < 0 || game.DealerIndex >= game.Players.Count ||
+            SpecialCardNames.Any(card => !game.SelectedSpecialCards.ContainsKey(card)))
+            return false;
+
+        var maximumRounds = 60 / game.Players.Count;
+        var completedRoundCount = game.CompletedRounds.Count;
+        if (completedRoundCount > maximumRounds ||
+            ((game.Phase is GamePhase.Predictions or GamePhase.Scoring) && completedRoundCount == maximumRounds) ||
+            (game.Phase == GamePhase.Results && completedRoundCount == 0) ||
+            game.EndedEarly && (game.Phase != GamePhase.Results || completedRoundCount == maximumRounds))
+            return false;
+
+        if (game.Players.Any(player => player is null || string.IsNullOrWhiteSpace(player.Name)))
+            return false;
+
+        for (var index = 0; index < completedRoundCount; index++)
+        {
+            var round = game.CompletedRounds[index];
+            if (round is null || round.Number != index + 1 || round.DealerIndex < 0 ||
+                round.DealerIndex >= game.Players.Count || round.Results is null ||
+                round.Results.Count != game.Players.Count || round.Results.Any(result => result is null ||
+                    result.Player is null || string.IsNullOrWhiteSpace(result.Player.Name)) ||
+                round.CloudEvents is null || round.CloudEvents.Any(cloud => !IsValidCloudEvent(cloud, game.Players.Count)))
+                return false;
+        }
+
+        var currentRoundNumber = game.Phase == GamePhase.Results ? completedRoundCount : completedRoundCount + 1;
+        if (game.BombCount < 0 || game.BombCount > currentRoundNumber ||
+            game.CloudEvents.Any(cloud => !IsValidCloudEvent(cloud, game.Players.Count)))
+            return false;
+
+        if ((game.Phase == GamePhase.Predictions && game.Players.Any(player =>
+                 player.OriginalPrediction is not null || player.WonTricks is not null)) ||
+            ((game.Phase is GamePhase.Scoring or GamePhase.Results) && game.Players.Any(player =>
+                 player.Prediction is null || player.OriginalPrediction is null)) ||
+            (game.Phase == GamePhase.Results && game.Players.Any(player => player.WonTricks is null)))
+            return false;
+
+        return true;
+    }
+
+    private static bool IsValidCloudEvent(CloudEvent? cloud, int playerCount) =>
+        cloud is not null && cloud.PlayerIndex >= 0 && cloud.PlayerIndex < playerCount && cloud.Change is -1 or 1;
 
     private void AddPlayer()
     {
@@ -725,53 +794,9 @@
         public bool MustPredictionSumDiffer { get; set; }
     }
 
-    private sealed class CompletedRound
-    {
-        public CompletedRound() { }
-        public CompletedRound(int number, int dealerIndex, List<RoundPlayerResult> results, int bombCount, List<CloudEvent> cloudEvents)
-        {
-            Number = number;
-            DealerIndex = dealerIndex;
-            Results = results;
-            BombCount = bombCount;
-            CloudEvents = cloudEvents;
-        }
-        public int Number { get; set; }
-        public int DealerIndex { get; set; }
-        public List<RoundPlayerResult> Results { get; set; } = [];
-        public int BombCount { get; set; }
-        public List<CloudEvent> CloudEvents { get; set; } = [];
-    }
-
-    private sealed class CloudEvent
-    {
-        public CloudEvent() { }
-        public CloudEvent(int playerIndex, int change) { PlayerIndex = playerIndex; Change = change; }
-        public int PlayerIndex { get; set; }
-        public int Change { get; set; }
-    }
-
-    private sealed class RoundPlayerResult
-    {
-        public RoundPlayerResult() { }
-        public RoundPlayerResult(Participant player, int originalPrediction, int cloudChange, int prediction, int wonTricks, int points, int totalPoints)
-        {
-            Player = player;
-            OriginalPrediction = originalPrediction;
-            CloudChange = cloudChange;
-            Prediction = prediction;
-            WonTricks = wonTricks;
-            Points = points;
-            TotalPoints = totalPoints;
-        }
-        public Participant Player { get; set; } = new();
-        public int OriginalPrediction { get; set; }
-        public int CloudChange { get; set; }
-        public int Prediction { get; set; }
-        public int WonTricks { get; set; }
-        public int Points { get; set; }
-        public int TotalPoints { get; set; }
-    }
+    private sealed record CompletedRound(int Number, int DealerIndex, List<RoundPlayerResult> Results, int BombCount, List<CloudEvent> CloudEvents);
+    private sealed record CloudEvent(int PlayerIndex, int Change);
+    private sealed record RoundPlayerResult(Participant Player, int OriginalPrediction, int CloudChange, int Prediction, int WonTricks, int Points, int TotalPoints);
 
     private enum GamePhase { Setup, Predictions, Scoring, Results }
 }
