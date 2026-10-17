@@ -355,3 +355,17 @@ test('erlaubt ohne Hexe höchstens eine Bombe in der Stichrunde', async ({ page 
   await expect(page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ })).toBeDisabled();
   await expect(page.getByRole('button', { name: /Bombe bei Stich 2 erfassen/ })).toBeDisabled();
 });
+
+test('zeigt nach zwei Bomben in Stichrunde drei nur einen verteilbaren Stich', async ({ page }) => {
+  await startGameWithPlayers(page, 3);
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+  await scoreCurrentRound(page, 2);
+  await page.getByRole('button', { name: 'Stichrunde 3 starten' }).click();
+  await confirmZeroPredictions(page);
+
+  await page.getByRole('button', { name: /Bombe bei Stich 1 erfassen/ }).click();
+  await page.getByRole('button', { name: /Bombe bei Stich 2 erfassen/ }).click();
+
+  await expect(page.getByText('Gewonnene Stiche: 0 von 1.')).toBeVisible();
+});

@@ -159,7 +159,7 @@
                 }
             </div>
 
-            <p class="sum-note">Gewonnene Stiche: <strong>@WonTrickSum</strong> von @RoundTrickCount.</p>
+            <p class="sum-note">Gewonnene Stiche: <strong>@WonTrickSum</strong> von @DistributableTrickCount.</p>
             @if (!string.IsNullOrWhiteSpace(scoringError))
             {
                 <p class="form-error" role="alert">@scoringError</p>
@@ -262,6 +262,7 @@
     private int PredictionSum => players.Sum(player => player.Prediction ?? 0);
     private int WonTrickSum => players.Sum(player => player.WonTricks ?? 0);
     private int BombedTrickCount => bombEvents.Distinct().Count();
+    private int DistributableTrickCount => RoundTrickCount - BombedTrickCount;
     private int MaxBombUses => selectedSpecialCards["Hexe"] && RoundTrickCount > 1 ? 2 : 1;
     private string CurrentBombSummary => FormatBombs(bombEvents);
     private string PredictionSumRule => mustPredictionSumDiffer ? "muss von der Stichzahl abweichen." : "darf der Stichzahl entsprechen.";
@@ -341,10 +342,9 @@
             return;
         }
 
-        var expectedWonTrickSum = RoundTrickCount - BombedTrickCount;
-        if (WonTrickSum != expectedWonTrickSum)
+        if (WonTrickSum != DistributableTrickCount)
         {
-            scoringError = $"Die Summe der gewonnenen Stiche muss genau {expectedWonTrickSum} betragen.";
+            scoringError = $"Die Summe der gewonnenen Stiche muss genau {DistributableTrickCount} betragen.";
             return;
         }
 
