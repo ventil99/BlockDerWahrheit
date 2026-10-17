@@ -561,6 +561,74 @@ test('bewahrt mehrere unabhängige Partien und zeigt abgeschlossene Partien in d
   await expect(page.getByLabel('Dora')).toHaveValue('1');
 });
 
+test('startet aus einer abgeschlossenen Partienvorlage eine bearbeitbare Partie ohne alten Spielstand', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('radio', { name: 'Vorhersagesumme muss von der Stichzahl abweichen' }).check();
+  for (const cardName of ['Gestaltenwandler', 'Drache', 'Fee', 'Werwolf', 'Jongleur', 'Hexe']) {
+    await page.getByLabel(cardName).uncheck();
+  }
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+
+  await confirmZeroPredictions(page);
+  await page.getByRole('button', { name: 'Bombe hinzufügen' }).click();
+  for (const input of await page.getByRole('spinbutton').all()) await input.fill('0');
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+
+  await page.getByRole('button', { name: 'Stichrunde 2 starten' }).click();
+  await confirmZeroPredictions(page);
+  await page.getByRole('button', { name: 'Wolke hinzufügen' }).click();
+  const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
+  await cloudDialog.getByLabel('Gewinnende Person').selectOption({ label: 'Ada (Vorhersage 0)' });
+  await cloudDialog.getByLabel('Vorhersage um eins erhöhen').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', { Ada: 2, Bela: 0, Cora: 0 });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+  await page.getByRole('button', { name: 'Partie vorzeitig beenden' }).click();
+  await expect(page.getByText('Ausgespielte Bomben: 1')).toBeVisible();
+  await expect(page.getByText('Wolkenereignisse: Ada: +1')).toBeVisible();
+  const sourceTables = await page.getByRole('table').allInnerTexts();
+
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  const source = page.getByRole('article').filter({ hasText: 'Ada, Bela, Cora' });
+  const sourceSummary = await source.innerText();
+  await expect(source).toContainText('Abgeschlossen · vorzeitig nach Stichrunde 2');
+  await page.getByRole('button', { name: 'Neue Partie aus Vorlage: Ada, Bela, Cora' }).click();
+
+  await expect(page.getByLabel('Name für Spielende 1')).toHaveValue('Ada');
+  await expect(page.getByLabel('Name für Spielende 2')).toHaveValue('Bela');
+  await expect(page.getByLabel('Name für Spielende 3')).toHaveValue('Cora');
+  await expect(page.getByRole('radio', { name: 'Vorhersagesumme muss von der Stichzahl abweichen' })).toBeChecked();
+  await expect(page.getByLabel('Bombe')).toBeChecked();
+  await expect(page.getByLabel('Wolke')).toBeChecked();
+  await expect(page.getByLabel('Vampir')).toBeChecked();
+
+  await page.getByLabel('Name für Spielende 1').fill('Ari');
+  await page.getByRole('radio', { name: 'Vorhersagesumme darf der Stichzahl entsprechen' }).check();
+  await page.getByLabel('Vampir').uncheck();
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await expect(page.getByText('Stichrunde 1 von 20')).toBeVisible();
+  await confirmZeroPredictions(page);
+  await expect(page.getByText('Bomben ausgespielt: 0 von 1')).toBeVisible();
+  await expect(page.getByText('Wolken ausgespielt: 0 von 1')).toBeVisible();
+  await expect(page.getByText('Bisherige Ergebnisse (2 Stichrunden)')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await expect(page.getByRole('article')).toHaveCount(2);
+  await expect(source).toHaveText(sourceSummary);
+  const newGame = page.getByRole('article').filter({ hasText: 'Ari, Bela, Cora' });
+  await expect(newGame).toContainText('Offen · Stichrunde 1 von 20 · Ergebniseingabe offen');
+  await expect(newGame).toContainText('Ari 0 · Bela 0 · Cora 0');
+  await page.getByRole('button', { name: 'Partie öffnen: Ari, Bela, Cora' }).click();
+  await expect(page.getByRole('heading', { name: 'Gewonnene Stiche' })).toBeVisible();
+  await expect(page.getByText('Bomben ausgespielt: 0 von 1')).toBeVisible();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await page.getByRole('button', { name: 'Partie öffnen: Ada, Bela, Cora' }).click();
+  expect(await page.getByRole('table').allInnerTexts()).toEqual(sourceTables);
+  await expect(page.getByText('Ausgespielte Bomben: 1')).toBeVisible();
+  await expect(page.getByText('Wolkenereignisse: Ada: +1')).toBeVisible();
+});
+
 test('stellt Vorhersagen und Ergebniseingaben nach dem Neuladen mit demselben Geber wieder her', async ({ page }) => {
   await page.goto('/');
   await fillNames(page, ['Ada', 'Bela', 'Cora']);

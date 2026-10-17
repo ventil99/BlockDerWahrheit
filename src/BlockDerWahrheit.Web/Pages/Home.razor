@@ -56,7 +56,10 @@
                                 <span>@GameStatus(game)</span>
                                 <span>@GameScores(game)</span>
                             </button>
-                            <button class="secondary-button saved-game-delete" type="button" aria-label="Partie @GamePlayers(game) löschen" @onclick="() => DeleteGame(game.Id)">Löschen</button>
+                            <div class="saved-game-actions">
+                                <button class="secondary-button" type="button" aria-label="Neue Partie aus Vorlage: @GamePlayers(game)" @onclick="() => CreateGameFromTemplate(game.Id)">Als Vorlage verwenden</button>
+                                <button class="secondary-button" type="button" aria-label="Partie @GamePlayers(game) löschen" @onclick="() => DeleteGame(game.Id)">Löschen</button>
+                            </div>
                         </article>
                     }
                 </div>
@@ -433,6 +436,18 @@
         mustPredictionSumDiffer = false;
         setupError = predictionError = scoringError = "";
         showCollection = false;
+    }
+
+    private void CreateGameFromTemplate(string id)
+    {
+        var source = savedGames.FirstOrDefault(item => item.Id == id);
+        if (source is null)
+            return;
+
+        CreateNewGame();
+        players = source.Players.Select(player => new Participant { Name = player.Name }).ToList();
+        selectedSpecialCards = SpecialCardNames.ToDictionary(card => card, card => source.SelectedSpecialCards[card]);
+        mustPredictionSumDiffer = source.MustPredictionSumDiffer;
     }
 
     private void OpenGame(string id)
