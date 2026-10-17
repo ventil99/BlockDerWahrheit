@@ -1,5 +1,6 @@
 @page "/"
 @using System.Text.Json
+@using System.Text.Json.Serialization
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 
@@ -16,7 +17,7 @@
     </header>
 
     <section class="game-card" aria-labelledby="page-heading">
-        @if (initialized && !showCollection && savedGames.Count > 0)
+        @if (initialized && !showCollection)
         {
             <button class="collection-link" type="button" @onclick="ShowCollection">Zur Partienübersicht</button>
         }
@@ -41,6 +42,17 @@
                 </div>
             </div>
             <button class="primary-button" type="button" @onclick="CreateNewGame">Neue Partie <span aria-hidden="true">→</span></button>
+            <div class="collection-actions">
+                <button class="secondary-button" type="button" @onclick="ExportCollection">Partiensammlung exportieren</button>
+                <label class="secondary-button file-button">
+                    Partiensammlung importieren
+                    <InputFile @key="importInputKey" OnChange="ImportCollection" accept=".json,application/json" />
+                </label>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(importError))
+            {
+                <p class="form-error" role="alert">@importError</p>
+            }
             @if (savedGames.Count == 0)
             {
                 <p class="sum-note">Noch keine Partien.</p>
@@ -340,6 +352,7 @@
 @code {
     private const int MinPlayers = 3;
     private const int MaxPlayers = 6;
+    private const long MaxImportFileSize = 5 * 1024 * 1024;
     private const string StorageKey = "wizard-punktezahler.partiensammlung.v1";
     private static readonly string[] SpecialCardNames = ["Gestaltenwandler", "Drache", "Fee", "Bombe", "Werwolf", "Jongleur", "Wolke", "Hexe", "Vampir"];
     private List<Participant> players = [new(), new(), new()];
@@ -360,10 +373,12 @@
     private string predictionError = "";
     private string scoringError = "";
     private string storageError = "";
+    private string importError = "";
     private string currentGameId = "";
     private bool storageLoadFailed;
     private bool initialized;
     private bool showCollection;
+    private int importInputKey;
 
     private int CurrentRoundNumber => completedRounds.Count + 1;
     private int MaximumRounds => MaxRounds(players.Count);
@@ -519,14 +534,90 @@
         if (storageLoadFailed)
             return;
 
+        await WriteCollection(savedGames);
+    }
+
+    private async Task<bool> WriteCollection(List<StoredGame> games)
+    {
         try
         {
-            await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(savedGames));
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(games));
             storageError = "";
+            return true;
         }
         catch (Exception exception) when (exception is JSException or JsonException or NotSupportedException or InvalidOperationException)
         {
             storageError = "Die Partie konnte nicht im Browser gespeichert werden. Prüft den verfügbaren Speicher.";
+            return false;
+        }
+    }
+
+    private async Task ExportCollection()
+    {
+        try
+        {
+            var export = new CollectionExport { FormatVersion = 1, Games = savedGames };
+            await JS.InvokeVoidAsync("downloadCollection", "wizard-partiensammlung.json", JsonSerializer.Serialize(export));
+            importError = "";
+        }
+        catch (Exception exception) when (exception is JSException or JsonException or NotSupportedException or InvalidOperationException)
+        {
+            importError = "Die Partiensammlung konnte nicht exportiert werden.";
+        }
+    }
+
+    private async Task ImportCollection(InputFileChangeEventArgs args)
+    {
+        importError = "";
+        try
+        {
+            await using var stream = args.File.OpenReadStream(MaxImportFileSize);
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            var import = JsonSerializer.Deserialize<CollectionExport>(json);
+            if (import is null || import.Games is null)
+            {
+                importError = "Die Datei enthält keine gültige Partiensammlung. Die bisherige Sammlung bleibt unverändert.";
+                return;
+            }
+
+            if (import.FormatVersion != 1)
+            {
+                importError = $"Das Dateiformat Version {import.FormatVersion} wird nicht unterstützt. Die bisherige Sammlung bleibt unverändert.";
+                return;
+            }
+
+            if (!IsValidCollection(import.Games))
+            {
+                importError = "Die Partiensammlung ist inkonsistent. Die bisherige Sammlung bleibt unverändert.";
+                return;
+            }
+
+            if (!await JS.InvokeAsync<bool>("confirm", $"Die gesamte Partiensammlung wird vollständig ersetzt. Partien, die in der Datei fehlen, werden gelöscht. Die Datei enthält {import.Games.Count} Partien. Fortfahren?"))
+                return;
+
+            if (!await WriteCollection(import.Games))
+            {
+                importError = "Der Import wurde nicht übernommen, weil die Partiensammlung nicht im Browser gespeichert werden konnte.";
+                return;
+            }
+
+            savedGames = import.Games;
+            storageLoadFailed = false;
+            currentGameId = "";
+            showCollection = true;
+        }
+        catch (JsonException)
+        {
+            importError = "Die Datei ist kein gültiges oder vollständiges JSON. Die bisherige Sammlung bleibt unverändert.";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or NotSupportedException or JSException)
+        {
+            importError = "Die Datei konnte nicht vollständig gelesen werden (maximal 5 MB). Die bisherige Sammlung bleibt unverändert.";
+        }
+        finally
+        {
+            importInputKey++;
         }
     }
 
@@ -564,6 +655,7 @@
             game.CloudEvents is null || game.SelectedSpecialCards is null ||
             !Enum.IsDefined(game.Phase) || game.Phase == GamePhase.Setup ||
             game.DealerIndex < 0 || game.DealerIndex >= game.Players.Count ||
+            game.SelectedSpecialCards.Count != SpecialCardNames.Length ||
             SpecialCardNames.Any(card => !game.SelectedSpecialCards.ContainsKey(card)))
             return false;
 
@@ -578,29 +670,118 @@
         if (game.Players.Any(player => player is null || string.IsNullOrWhiteSpace(player.Name)))
             return false;
 
+        var totalPoints = new int[game.Players.Count];
+        var firstDealerIndex = completedRoundCount > 0 ? game.CompletedRounds[0]?.DealerIndex ?? -1 : game.DealerIndex;
         for (var index = 0; index < completedRoundCount; index++)
         {
             var round = game.CompletedRounds[index];
-            if (round is null || round.Number != index + 1 || round.DealerIndex < 0 ||
-                round.DealerIndex >= game.Players.Count || round.Results is null ||
-                round.Results.Count != game.Players.Count || round.Results.Any(result => result is null ||
-                    result.Player is null || string.IsNullOrWhiteSpace(result.Player.Name)) ||
-                round.CloudEvents is null || round.CloudEvents.Any(cloud => !IsValidCloudEvent(cloud, game.Players.Count)))
+            if (round is null || round.Number != index + 1 || round.DealerIndex != (firstDealerIndex + index) % game.Players.Count ||
+                round.Results is null || round.Results.Count != game.Players.Count ||
+                !IsValidRoundEvents(round.Number, round.BombCount, round.CloudEvents, game.SelectedSpecialCards, game.Players.Count))
+                return false;
+
+            for (var playerIndex = 0; playerIndex < game.Players.Count; playerIndex++)
+            {
+                if (!IsValidRoundResult(round.Results[playerIndex], game.Players[playerIndex], playerIndex, round, totalPoints))
+                    return false;
+            }
+
+            if (round.Results.Sum(result => result.WonTricks) != round.Number - round.BombCount ||
+                game.MustPredictionSumDiffer && round.Results.Sum(result => result.OriginalPrediction) == round.Number)
                 return false;
         }
 
         var currentRoundNumber = game.Phase == GamePhase.Results ? completedRoundCount : completedRoundCount + 1;
-        if (game.BombCount < 0 || game.BombCount > currentRoundNumber ||
-            game.CloudEvents.Any(cloud => !IsValidCloudEvent(cloud, game.Players.Count)))
+        if (!IsValidRoundEvents(currentRoundNumber, game.BombCount, game.CloudEvents, game.SelectedSpecialCards, game.Players.Count))
             return false;
 
-        if ((game.Phase == GamePhase.Predictions && game.Players.Any(player =>
-                 player.OriginalPrediction is not null || player.WonTricks is not null)) ||
-            ((game.Phase is GamePhase.Scoring or GamePhase.Results) && game.Players.Any(player =>
-                 !IsRoundValue(player.Prediction, currentRoundNumber) ||
-                 !IsRoundValue(player.OriginalPrediction, currentRoundNumber))) ||
-            (game.Phase == GamePhase.Results && game.Players.Any(player => player.WonTricks is null)))
+        for (var index = 0; index < game.Players.Count; index++)
+        {
+            var player = game.Players[index];
+            if (player.TotalPoints != totalPoints[index])
+                return false;
+
+            if (game.Phase == GamePhase.Predictions &&
+                (player.OriginalPrediction is not null || player.WonTricks is not null ||
+                 player.Prediction is int prediction && !IsRoundValue(prediction, currentRoundNumber)))
+                return false;
+
+            if (game.Phase == GamePhase.Scoring &&
+                (!IsRoundValue(player.Prediction, currentRoundNumber) || !IsRoundValue(player.OriginalPrediction, currentRoundNumber) ||
+                 player.WonTricks is int wonTricks && !IsRoundValue(wonTricks, currentRoundNumber)))
+                return false;
+
+            if (game.Phase == GamePhase.Results)
+            {
+                var result = game.CompletedRounds[^1].Results[index];
+                if (player.Prediction != result.Prediction || player.OriginalPrediction != result.OriginalPrediction ||
+                    player.WonTricks != result.WonTricks)
+                    return false;
+            }
+        }
+
+        if (game.Phase == GamePhase.Predictions && (game.BombCount != 0 || game.CloudEvents.Count != 0) ||
+            game.Phase == GamePhase.Scoring &&
+            (!AreCloudPredictionsValid(game.Players, game.CloudEvents, currentRoundNumber) ||
+             game.MustPredictionSumDiffer && game.Players.Sum(player => player.OriginalPrediction ?? 0) == currentRoundNumber) ||
+            game.Phase == GamePhase.Results &&
+            (game.DealerIndex != game.CompletedRounds[^1].DealerIndex ||
+             game.BombCount != game.CompletedRounds[^1].BombCount ||
+             !game.CloudEvents.SequenceEqual(game.CompletedRounds[^1].CloudEvents)) ||
+            game.Phase is GamePhase.Predictions or GamePhase.Scoring && completedRoundCount > 0 &&
+            game.DealerIndex != (firstDealerIndex + completedRoundCount) % game.Players.Count)
             return false;
+
+        return true;
+    }
+
+    private static bool IsValidRoundResult(RoundPlayerResult? result, Participant player, int playerIndex, CompletedRound round, int[] totalPoints)
+    {
+        if (result?.Player is null || result.Player.Name != player.Name ||
+            !IsRoundValue(result.OriginalPrediction, round.Number) || !IsRoundValue(result.Prediction, round.Number) ||
+            !IsRoundValue(result.WonTricks, round.Number) ||
+            result.CloudChange != round.CloudEvents.Where(cloud => cloud.PlayerIndex == playerIndex).Sum(cloud => cloud.Change) ||
+            result.Prediction != result.OriginalPrediction + result.CloudChange ||
+            !AreCloudChangesInRange(result.OriginalPrediction, round.CloudEvents, playerIndex, round.Number))
+            return false;
+
+        var difference = Math.Abs(result.Prediction - result.WonTricks);
+        var points = difference == 0 ? 20 + 10 * result.WonTricks : -10 * difference;
+        var expectedTotal = (long)totalPoints[playerIndex] + points;
+        if (result.Points != points || expectedTotal != result.TotalPoints)
+            return false;
+
+        totalPoints[playerIndex] = result.TotalPoints;
+        return true;
+    }
+
+    private static bool IsValidRoundEvents(int roundNumber, int bombCount, List<CloudEvent>? cloudEvents, Dictionary<string, bool> selectedSpecialCards, int playerCount)
+    {
+        if (cloudEvents is null || cloudEvents.Any(cloud => !IsValidCloudEvent(cloud, playerCount)) ||
+            bombCount < 0 || bombCount > (selectedSpecialCards["Hexe"] && roundNumber > 1 ? 2 : 1) ||
+            bombCount > 0 && !selectedSpecialCards["Bombe"] ||
+            cloudEvents.Count > (selectedSpecialCards["Hexe"] && roundNumber > 1 ? 2 : 1) ||
+            cloudEvents.Count > 0 && !selectedSpecialCards["Wolke"] ||
+            bombCount + cloudEvents.Count > Math.Min(selectedSpecialCards["Hexe"] ? 3 : 2, roundNumber))
+            return false;
+
+        return true;
+    }
+
+    private static bool AreCloudPredictionsValid(List<Participant> players, List<CloudEvent> cloudEvents, int roundNumber) =>
+        players.Select((player, index) => player.OriginalPrediction is int original &&
+            player.Prediction == original + cloudEvents.Where(cloud => cloud.PlayerIndex == index).Sum(cloud => cloud.Change) &&
+            AreCloudChangesInRange(original, cloudEvents, index, roundNumber)).All(isValid => isValid);
+
+    private static bool AreCloudChangesInRange(int originalPrediction, List<CloudEvent> cloudEvents, int playerIndex, int roundNumber)
+    {
+        var prediction = originalPrediction;
+        foreach (var cloud in cloudEvents.Where(cloud => cloud.PlayerIndex == playerIndex))
+        {
+            prediction += cloud.Change;
+            if (!IsRoundValue(prediction, roundNumber))
+                return false;
+        }
 
         return true;
     }
@@ -793,31 +974,66 @@
     private sealed class Participant
     {
         public Participant() { }
+        [JsonRequired]
         public string Name { get; set; } = "";
+        [JsonRequired]
         public int? Prediction { get; set; }
+        [JsonRequired]
         public int? OriginalPrediction { get; set; }
+        [JsonRequired]
         public int? WonTricks { get; set; }
+        [JsonRequired]
         public int TotalPoints { get; set; }
     }
 
     private sealed class StoredGame
     {
         public StoredGame() { }
+        [JsonRequired]
         public string Id { get; set; } = "";
+        [JsonRequired]
         public List<Participant> Players { get; set; } = [];
+        [JsonRequired]
         public List<CompletedRound> CompletedRounds { get; set; } = [];
+        [JsonRequired]
         public List<CloudEvent> CloudEvents { get; set; } = [];
+        [JsonRequired]
         public int BombCount { get; set; }
+        [JsonRequired]
         public Dictionary<string, bool> SelectedSpecialCards { get; set; } = [];
+        [JsonRequired]
         public GamePhase Phase { get; set; }
+        [JsonRequired]
         public int DealerIndex { get; set; }
+        [JsonRequired]
         public bool EndedEarly { get; set; }
+        [JsonRequired]
         public bool MustPredictionSumDiffer { get; set; }
     }
 
-    private sealed record CompletedRound(int Number, int DealerIndex, List<RoundPlayerResult> Results, int BombCount, List<CloudEvent> CloudEvents);
-    private sealed record CloudEvent(int PlayerIndex, int Change);
-    private sealed record RoundPlayerResult(Participant Player, int OriginalPrediction, int CloudChange, int Prediction, int WonTricks, int Points, int TotalPoints);
+    private sealed class CollectionExport
+    {
+        [JsonRequired]
+        public int FormatVersion { get; set; }
+        [JsonRequired]
+        public List<StoredGame> Games { get; set; } = [];
+    }
+
+    private sealed record CompletedRound(
+        [property: JsonRequired] int Number,
+        [property: JsonRequired] int DealerIndex,
+        [property: JsonRequired] List<RoundPlayerResult> Results,
+        [property: JsonRequired] int BombCount,
+        [property: JsonRequired] List<CloudEvent> CloudEvents);
+    private sealed record CloudEvent([property: JsonRequired] int PlayerIndex, [property: JsonRequired] int Change);
+    private sealed record RoundPlayerResult(
+        [property: JsonRequired] Participant Player,
+        [property: JsonRequired] int OriginalPrediction,
+        [property: JsonRequired] int CloudChange,
+        [property: JsonRequired] int Prediction,
+        [property: JsonRequired] int WonTricks,
+        [property: JsonRequired] int Points,
+        [property: JsonRequired] int TotalPoints);
 
     private enum GamePhase { Setup, Predictions, Scoring, Results }
 }

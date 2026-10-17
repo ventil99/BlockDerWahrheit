@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 async function fillNames(page, names) {
   for (let index = 0; index < names.length; index++) {
@@ -748,4 +749,136 @@ test('weist Vorhersagen außerhalb des Stichbereichs in gespeicherten Wertungen 
   await page.goto('/');
   await expect(page.getByRole('alert')).toContainText('sind beschädigt und konnten nicht geladen werden');
   expect(await page.evaluate(() => localStorage.getItem('wizard-punktezahler.partiensammlung.v1'))).toBe(payload);
+});
+
+test('exportiert und importiert die versionierte Partiensammlung vollständig', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await confirmZeroPredictions(page);
+  await page.getByRole('button', { name: 'Wolke hinzufügen' }).click();
+  const cloudDialog = page.getByRole('dialog', { name: 'Wolkenstich erfassen' });
+  await cloudDialog.getByLabel('Gewinnende Person').selectOption({ label: 'Ada (Vorhersage 0)' });
+  await cloudDialog.getByLabel('Vorhersage um eins erhöhen').check();
+  await cloudDialog.getByRole('button', { name: 'Wolke erfassen' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', { Ada: 1, Bela: 0, Cora: 0 });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+  await page.getByRole('button', { name: 'Partie vorzeitig beenden' }).click();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+
+  await page.getByRole('button', { name: 'Neue Partie' }).click();
+  await fillNames(page, ['Dora', 'Emil', 'Frieda']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', { Dora: 1, Emil: 0, Frieda: 0 });
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+
+  await page.getByRole('button', { name: 'Neue Partie' }).click();
+  await fillNames(page, ['Gero', 'Hedi', 'Ingo']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', { Gero: 1, Hedi: 0, Ingo: 0 });
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+  await page.getByLabel('Gewonnene Stiche für Gero').fill('1');
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+
+  await page.context().setOffline(true);
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Partiensammlung exportieren' }).click();
+  const download = await downloadPromise;
+  const backup = await readFile(await download.path(), 'utf8');
+  const collection = JSON.parse(backup);
+  expect(collection.FormatVersion).toBe(1);
+  expect(collection.Games).toHaveLength(3);
+  expect(collection.Games[0].CompletedRounds[0].Results[0]).toMatchObject({ OriginalPrediction: 0, Prediction: 1, WonTricks: 1, Points: 30 });
+  expect(collection.Games[0].CompletedRounds[0].CloudEvents).toEqual([{ PlayerIndex: collection.Games[0].Players.findIndex((player) => player.Name === 'Ada'), Change: 1 }]);
+  expect(collection.Games[1].Phase).toBe(1);
+  expect(collection.Games[2].Phase).toBe(2);
+
+  await page.getByRole('button', { name: 'Neue Partie' }).click();
+  await fillNames(page, ['Jana', 'Kuno', 'Leni']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  expect(await page.getByRole('article')).toHaveCount(4);
+
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('gesamte Partiensammlung');
+    expect(dialog.message()).toContain('vollständig ersetzt');
+    dialog.accept();
+  });
+  await page.getByLabel('Partiensammlung importieren').setInputFiles({
+    name: 'backup.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(backup),
+  });
+  await expect(page.getByRole('article')).toHaveCount(3);
+  await expect(page.getByRole('article').filter({ hasText: 'Jana, Kuno, Leni' })).toHaveCount(0);
+  await page.context().setOffline(false);
+  await page.reload();
+  await expect(page.getByRole('article')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Partie öffnen: Dora, Emil, Frieda' }).click();
+  await expect(page.getByRole('heading', { name: 'Vorhersagen' })).toBeVisible();
+  await expect(page.getByLabel('Dora')).toHaveValue('1');
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await page.getByRole('button', { name: 'Partie öffnen: Gero, Hedi, Ingo' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', { Gero: 1, Hedi: 0, Ingo: 0 });
+  await page.getByRole('button', { name: 'Wertung berechnen' }).click();
+  await expect(page.getByRole('heading', { name: 'Euer Ergebnis' })).toBeVisible();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await page.getByRole('button', { name: 'Partie öffnen: Ada, Bela, Cora' }).click();
+  await expect(page.getByText('Wolkenereignisse: Ada: +1')).toBeVisible();
+  await expect(page.locator('tbody tr').filter({ hasText: 'Ada' }).last()).toContainText('+30');
+});
+
+test('lässt die vorhandene Sammlung bei ungültigen und inkonsistenten Importdateien unverändert', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  const original = await page.evaluate(() => localStorage.getItem('wizard-punktezahler.partiensammlung.v1'));
+  const invalidGames = JSON.parse(original);
+  invalidGames[0].Players.pop();
+  const invalidFiles = [
+    { name: 'broken.json', contents: '{', error: 'kein gültiges oder vollständiges JSON' },
+    { name: 'unsupported.json', contents: JSON.stringify({ FormatVersion: 999, Games: [] }), error: 'wird nicht unterstützt' },
+    { name: 'inconsistent.json', contents: JSON.stringify({ FormatVersion: 1, Games: invalidGames }), error: 'inkonsistent' },
+  ];
+
+  for (const file of invalidFiles) {
+    await page.getByLabel('Partiensammlung importieren').setInputFiles({
+      name: file.name,
+      mimeType: 'application/json',
+      buffer: Buffer.from(file.contents),
+    });
+    await expect(page.locator('.form-error')).toContainText(file.error);
+    await expect(page.getByRole('article')).toHaveCount(1);
+    expect(await page.evaluate(() => localStorage.getItem('wizard-punktezahler.partiensammlung.v1'))).toBe(original);
+  }
+});
+
+test('behält die Sammlung bei einem fehlgeschlagenen Speichern des Imports bei', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.failCollectionWrite = false;
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (window.failCollectionWrite && key === 'wizard-punktezahler.partiensammlung.v1') throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      return setItem.call(this, key, value);
+    };
+  });
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  const original = await page.evaluate(() => localStorage.getItem('wizard-punktezahler.partiensammlung.v1'));
+  await page.evaluate(() => { window.failCollectionWrite = true; });
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByLabel('Partiensammlung importieren').setInputFiles({
+    name: 'empty.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ FormatVersion: 1, Games: [] })),
+  });
+
+  await expect(page.locator('.form-error')).toContainText('Import wurde nicht übernommen');
+  await expect(page.locator('.storage-error')).toContainText('nicht im Browser gespeichert');
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(page.getByRole('article')).toContainText('Ada, Bela, Cora');
+  expect(await page.evaluate(() => localStorage.getItem('wizard-punktezahler.partiensammlung.v1'))).toBe(original);
 });
