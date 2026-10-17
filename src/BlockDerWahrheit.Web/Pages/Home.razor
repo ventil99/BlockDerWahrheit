@@ -1,4 +1,7 @@
 @page "/"
+@using System.Text.Json
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
 <PageTitle>Wizard-Punktezähler</PageTitle>
 
@@ -13,8 +16,51 @@
     </header>
 
     <section class="game-card" aria-labelledby="page-heading">
-        @if (phase == GamePhase.Setup)
+        @if (initialized && !showCollection && phase != GamePhase.Setup && savedGames.Count > 0)
         {
+            <button class="collection-link" type="button" @onclick="ShowCollection">Zur Partienübersicht</button>
+        }
+        @if (!initialized)
+        {
+            <p class="app-loading">Partien werden geladen …</p>
+        }
+        else if (showCollection)
+        {
+            <div class="section-heading">
+                <div>
+                    <p class="step-label">Partiensammlung</p>
+                    <h2 id="page-heading">Eure Wizard-Partien</h2>
+                    <p class="muted">Offene und abgeschlossene Partien bleiben auf diesem Gerät erhalten.</p>
+                </div>
+            </div>
+            <button class="primary-button" type="button" @onclick="CreateNewGame">Neue Partie <span aria-hidden="true">→</span></button>
+            @if (savedGames.Count == 0)
+            {
+                <p class="sum-note">Noch keine gespeicherten Partien.</p>
+            }
+            else
+            {
+                <div class="saved-games" aria-label="Gespeicherte Partien">
+                    @foreach (var game in savedGames)
+                    {
+                        <article class="saved-game" @key="game.Id">
+                            <button class="saved-game-open" type="button" aria-label="Partie öffnen: @GamePlayers(game)" @onclick="() => OpenGame(game.Id)">
+                                <strong>@GamePlayers(game)</strong>
+                                <span>@GameStatus(game)</span>
+                                <span>@GameScores(game)</span>
+                            </button>
+                            <button class="secondary-button saved-game-delete" type="button" aria-label="Partie @GamePlayers(game) löschen" @onclick="() => DeleteGame(game.Id)">Löschen</button>
+                        </article>
+                    }
+                </div>
+            }
+        }
+        else if (phase == GamePhase.Setup)
+        {
+            @if (savedGames.Count > 0)
+            {
+                <button class="collection-link" type="button" @onclick="ShowCollection">Zur Partienübersicht</button>
+            }
             <div class="section-heading">
                 <div>
                     <p class="step-label">Schritt 1 von 3</p>
@@ -103,7 +149,7 @@
                     <div class="entry-row" @key="entry.player">
                         <span class="seat-number" aria-hidden="true">@(entry.index + 1)</span>
                         <label for="prediction-@entry.index">@entry.player.Name</label>
-                        <div class="number-field"><input id="prediction-@entry.index" type="number" min="0" max="@RoundTrickCount" step="1" @bind="entry.player.Prediction" @bind:event="oninput" inputmode="numeric" /><span>Stiche</span></div>
+                        <div class="number-field"><input id="prediction-@entry.index" type="number" min="0" max="@RoundTrickCount" step="1" @bind="entry.player.Prediction" @bind:event="oninput" @bind:after="SaveCurrentGame" inputmode="numeric" /><span>Stiche</span></div>
                     </div>
                 }
             </div>
@@ -124,6 +170,12 @@
                     <p class="muted">Tragt ein, wer die @RoundTrickCount @(RoundTrickCount == 1 ? "Stich" : "Stiche") gewonnen hat.</p>
                 </div>
                 <span class="round-pill">@RoundTrickCount @(RoundTrickCount == 1 ? "Stich" : "Stiche")</span>
+            </div>
+
+            <div class="turn-order" aria-label="Reihenfolge dieser Stichrunde">
+                <div class="turn-item"><span class="turn-icon" aria-hidden="true">♛</span><p><span>Geber</span><strong>@players[dealerIndex].Name</strong></p></div>
+                <div class="turn-item"><span class="turn-icon" aria-hidden="true">↻</span><p><span>Vorhersage beginnt bei</span><strong>@players[FirstPredictorIndex].Name</strong></p></div>
+                <div class="turn-item"><span class="turn-icon" aria-hidden="true">♠</span><p><span>Erster Stich beginnt bei</span><strong>@players[FirstPredictorIndex].Name</strong></p></div>
             </div>
 
             @if (selectedSpecialCards["Bombe"] || selectedSpecialCards["Wolke"])
@@ -154,7 +206,7 @@
                     <div class="entry-row" @key="entry.player">
                         <span class="seat-number" aria-hidden="true">@(entry.index + 1)</span>
                         <div class="score-name"><strong>@entry.player.Name</strong><span>Vorhersage: @entry.player.Prediction</span></div>
-                        <div class="number-field"><input id="won-@entry.index" aria-label="Gewonnene Stiche für @entry.player.Name" type="number" min="0" max="@RoundTrickCount" step="1" @bind="entry.player.WonTricks" @bind:event="oninput" inputmode="numeric" /><span>Stiche</span></div>
+                        <div class="number-field"><input id="won-@entry.index" aria-label="Gewonnene Stiche für @entry.player.Name" type="number" min="0" max="@RoundTrickCount" step="1" @bind="entry.player.WonTricks" @bind:event="oninput" @bind:after="SaveCurrentGame" inputmode="numeric" /><span>Stiche</span></div>
                     </div>
                 }
             </div>
@@ -271,22 +323,29 @@
         }
     </section>
 
+    @if (!string.IsNullOrWhiteSpace(storageError))
+    {
+        <p class="storage-error" role="alert">@storageError</p>
+    }
+
     <footer class="app-footer">Punkte im Blick. Spielspaß am Tisch.</footer>
 </main>
 
 @code {
     private const int MinPlayers = 3;
     private const int MaxPlayers = 6;
+    private const string StorageKey = "wizard-punktezahler.partiensammlung.v1";
     private static readonly string[] SpecialCardNames = ["Gestaltenwandler", "Drache", "Fee", "Bombe", "Werwolf", "Jongleur", "Wolke", "Hexe", "Vampir"];
-    private readonly List<Participant> players = [new(), new(), new()];
-    private readonly List<CompletedRound> completedRounds = [];
-    private readonly List<CloudEvent> cloudEvents = [];
+    private List<Participant> players = [new(), new(), new()];
+    private List<CompletedRound> completedRounds = [];
+    private List<CloudEvent> cloudEvents = [];
+    private List<StoredGame> savedGames = [];
+    private Dictionary<string, bool> selectedSpecialCards = SpecialCardNames.ToDictionary(card => card, _ => true);
     private int bombCount;
     private bool showCloudDialog;
     private int cloudPlayerIndex;
     private int cloudChange = 1;
     private string cloudError = "";
-    private readonly Dictionary<string, bool> selectedSpecialCards = SpecialCardNames.ToDictionary(card => card, _ => true);
     private GamePhase phase = GamePhase.Setup;
     private int dealerIndex;
     private bool endedEarly;
@@ -294,6 +353,10 @@
     private string setupError = "";
     private string predictionError = "";
     private string scoringError = "";
+    private string storageError = "";
+    private string currentGameId = "";
+    private bool initialized;
+    private bool showCollection;
 
     private int CurrentRoundNumber => completedRounds.Count + 1;
     private int MaximumRounds => 60 / players.Count;
@@ -321,6 +384,139 @@
         }
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+            if (!string.IsNullOrEmpty(json))
+                savedGames = JsonSerializer.Deserialize<List<StoredGame>>(json) ?? [];
+        }
+        catch (Exception exception) when (exception is JSException or JsonException or NotSupportedException or InvalidOperationException)
+        {
+            storageError = "Gespeicherte Partien konnten nicht geladen werden.";
+        }
+
+        showCollection = savedGames.Count > 0;
+        currentGameId = Guid.NewGuid().ToString("N");
+        initialized = true;
+    }
+
+    private void CreateNewGame()
+    {
+        currentGameId = Guid.NewGuid().ToString("N");
+        players = [new(), new(), new()];
+        completedRounds = [];
+        cloudEvents = [];
+        bombCount = 0;
+        selectedSpecialCards = SpecialCardNames.ToDictionary(card => card, _ => true);
+        phase = GamePhase.Setup;
+        dealerIndex = 0;
+        endedEarly = false;
+        mustPredictionSumDiffer = false;
+        setupError = predictionError = scoringError = "";
+        showCollection = false;
+    }
+
+    private void OpenGame(string id)
+    {
+        var game = savedGames.FirstOrDefault(item => item.Id == id);
+        if (game is null)
+            return;
+
+        currentGameId = game.Id;
+        players = game.Players;
+        completedRounds = game.CompletedRounds;
+        cloudEvents = game.CloudEvents;
+        bombCount = game.BombCount;
+        selectedSpecialCards = game.SelectedSpecialCards;
+        phase = game.Phase;
+        dealerIndex = game.DealerIndex;
+        endedEarly = game.EndedEarly;
+        mustPredictionSumDiffer = game.MustPredictionSumDiffer;
+        showCollection = false;
+    }
+
+    private async Task ShowCollection()
+    {
+        await SaveCurrentGame();
+        showCollection = true;
+    }
+
+    private async Task DeleteGame(string id)
+    {
+        var game = savedGames.FirstOrDefault(item => item.Id == id);
+        if (game is null || !await JS.InvokeAsync<bool>("confirm", $"Partie mit {GamePlayers(game)} wirklich löschen?"))
+            return;
+
+        savedGames.Remove(game);
+        if (currentGameId == id)
+            currentGameId = "";
+        await PersistCollection();
+    }
+
+    private async Task SaveCurrentGame()
+    {
+        if (!initialized || phase == GamePhase.Setup || string.IsNullOrEmpty(currentGameId))
+            return;
+
+        var game = new StoredGame
+        {
+            Id = currentGameId,
+            Players = players,
+            CompletedRounds = completedRounds,
+            CloudEvents = cloudEvents,
+            BombCount = bombCount,
+            SelectedSpecialCards = selectedSpecialCards,
+            Phase = phase,
+            DealerIndex = dealerIndex,
+            EndedEarly = endedEarly,
+            MustPredictionSumDiffer = mustPredictionSumDiffer
+        };
+        var index = savedGames.FindIndex(item => item.Id == currentGameId);
+        if (index < 0)
+            savedGames.Add(game);
+        else
+            savedGames[index] = game;
+
+        await PersistCollection();
+    }
+
+    private async Task PersistCollection()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(savedGames));
+            storageError = "";
+        }
+        catch (Exception exception) when (exception is JSException or JsonException or NotSupportedException or InvalidOperationException)
+        {
+            storageError = "Die Partie konnte nicht im Browser gespeichert werden. Prüft den verfügbaren Speicher.";
+        }
+    }
+
+    private static string GamePlayers(StoredGame game) => string.Join(", ", game.Players.Select(player => player.Name));
+
+    private static string GameScores(StoredGame game) => string.Join(" · ", game.Players.Select(player => $"{player.Name} {Signed(player.TotalPoints)}"));
+
+    private static string GameStatus(StoredGame game)
+    {
+        var maximumRounds = 60 / game.Players.Count;
+        if (game.EndedEarly)
+            return $"Abgeschlossen · vorzeitig nach Stichrunde {game.CompletedRounds.Count}";
+        if (game.Phase == GamePhase.Results && game.CompletedRounds.Count == maximumRounds)
+            return "Abgeschlossen";
+
+        var roundNumber = game.CompletedRounds.Count + 1;
+        var phaseName = game.Phase switch
+        {
+            GamePhase.Predictions => "Vorhersagen offen",
+            GamePhase.Scoring => "Ergebniseingabe offen",
+            _ => "Runde gewertet"
+        };
+        return $"Offen · Stichrunde {roundNumber} von {maximumRounds} · {phaseName}";
+    }
+
     private void AddPlayer()
     {
         if (players.Count < MaxPlayers)
@@ -332,7 +528,7 @@
         players.RemoveAt(index);
     }
 
-    private void StartGame()
+    private async Task StartGame()
     {
         setupError = "";
         if (players.Count is < MinPlayers or > MaxPlayers)
@@ -352,9 +548,10 @@
 
         dealerIndex = Random.Shared.Next(players.Count);
         phase = GamePhase.Predictions;
+        await SaveCurrentGame();
     }
 
-    private void StartRound()
+    private async Task StartRound()
     {
         predictionError = "";
         if (players.Any(player => player.Prediction is null || player.Prediction < 0 || player.Prediction > RoundTrickCount))
@@ -375,12 +572,16 @@
         bombCount = 0;
         cloudEvents.Clear();
         phase = GamePhase.Scoring;
+        await SaveCurrentGame();
     }
 
-    private void RecordBomb()
+    private async Task RecordBomb()
     {
         if (phase == GamePhase.Scoring && selectedSpecialCards["Bombe"] && CanRecordBomb)
+        {
             bombCount++;
+            await SaveCurrentGame();
+        }
     }
 
     private void OpenCloudDialog()
@@ -394,7 +595,7 @@
         showCloudDialog = true;
     }
 
-    private void ApplyCloud()
+    private async Task ApplyCloud()
     {
         cloudError = "";
         if (phase != GamePhase.Scoring || !selectedSpecialCards["Wolke"] || !CanRecordCloud)
@@ -418,6 +619,7 @@
         cloudEvents.Add(new CloudEvent(cloudPlayerIndex, cloudChange));
 
         showCloudDialog = false;
+        await SaveCurrentGame();
     }
 
     private void CloseCloudDialog()
@@ -432,7 +634,7 @@
             CloseCloudDialog();
     }
 
-    private void FinishRound()
+    private async Task FinishRound()
     {
         scoringError = "";
         if (players.Any(player => player.WonTricks is null || player.WonTricks < 0 || player.WonTricks > RoundTrickCount))
@@ -461,9 +663,10 @@
 
         completedRounds.Add(new CompletedRound(CurrentRoundNumber, dealerIndex, results, bombCount, cloudEvents.ToList()));
         phase = GamePhase.Results;
+        await SaveCurrentGame();
     }
 
-    private void StartNextRound()
+    private async Task StartNextRound()
     {
         if (phase != GamePhase.Results || GameComplete)
             return;
@@ -481,17 +684,22 @@
         predictionError = "";
         scoringError = "";
         phase = GamePhase.Predictions;
+        await SaveCurrentGame();
     }
 
-    private void EndGameEarly()
+    private async Task EndGameEarly()
     {
         if (phase == GamePhase.Results && !GameComplete)
+        {
             endedEarly = true;
+            await SaveCurrentGame();
+        }
     }
 
     private static string Signed(int points) => points > 0 ? $"+{points}" : points.ToString();
     private sealed class Participant
     {
+        public Participant() { }
         public string Name { get; set; } = "";
         public int? Prediction { get; set; }
         public int? OriginalPrediction { get; set; }
@@ -499,9 +707,68 @@
         public int TotalPoints { get; set; }
     }
 
-    private sealed record CompletedRound(int Number, int DealerIndex, List<RoundPlayerResult> Results, int BombCount, List<CloudEvent> CloudEvents);
-    private sealed record CloudEvent(int PlayerIndex, int Change);
-    private sealed record RoundPlayerResult(Participant Player, int OriginalPrediction, int CloudChange, int Prediction, int WonTricks, int Points, int TotalPoints);
+    private sealed class StoredGame
+    {
+        public StoredGame() { }
+        public string Id { get; set; } = "";
+        public List<Participant> Players { get; set; } = [];
+        public List<CompletedRound> CompletedRounds { get; set; } = [];
+        public List<CloudEvent> CloudEvents { get; set; } = [];
+        public int BombCount { get; set; }
+        public Dictionary<string, bool> SelectedSpecialCards { get; set; } = [];
+        public GamePhase Phase { get; set; }
+        public int DealerIndex { get; set; }
+        public bool EndedEarly { get; set; }
+        public bool MustPredictionSumDiffer { get; set; }
+    }
+
+    private sealed class CompletedRound
+    {
+        public CompletedRound() { }
+        public CompletedRound(int number, int dealerIndex, List<RoundPlayerResult> results, int bombCount, List<CloudEvent> cloudEvents)
+        {
+            Number = number;
+            DealerIndex = dealerIndex;
+            Results = results;
+            BombCount = bombCount;
+            CloudEvents = cloudEvents;
+        }
+        public int Number { get; set; }
+        public int DealerIndex { get; set; }
+        public List<RoundPlayerResult> Results { get; set; } = [];
+        public int BombCount { get; set; }
+        public List<CloudEvent> CloudEvents { get; set; } = [];
+    }
+
+    private sealed class CloudEvent
+    {
+        public CloudEvent() { }
+        public CloudEvent(int playerIndex, int change) { PlayerIndex = playerIndex; Change = change; }
+        public int PlayerIndex { get; set; }
+        public int Change { get; set; }
+    }
+
+    private sealed class RoundPlayerResult
+    {
+        public RoundPlayerResult() { }
+        public RoundPlayerResult(Participant player, int originalPrediction, int cloudChange, int prediction, int wonTricks, int points, int totalPoints)
+        {
+            Player = player;
+            OriginalPrediction = originalPrediction;
+            CloudChange = cloudChange;
+            Prediction = prediction;
+            WonTricks = wonTricks;
+            Points = points;
+            TotalPoints = totalPoints;
+        }
+        public Participant Player { get; set; } = new();
+        public int OriginalPrediction { get; set; }
+        public int CloudChange { get; set; }
+        public int Prediction { get; set; }
+        public int WonTricks { get; set; }
+        public int Points { get; set; }
+        public int TotalPoints { get; set; }
+    }
 
     private enum GamePhase { Setup, Predictions, Scoring, Results }
 }

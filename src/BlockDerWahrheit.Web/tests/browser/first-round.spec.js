@@ -28,6 +28,9 @@ async function scoreCurrentRound(page, trickCount) {
 
 async function startGameWithPlayers(page, playerCount) {
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: /Wer spielt mit|Eure Wizard-Partien/ })).toBeVisible();
+  const newGame = page.getByRole('button', { name: 'Neue Partie' });
+  if (await newGame.count()) await newGame.click();
   for (let index = 3; index < playerCount; index++) {
     await page.getByRole('button', { name: 'Spielende hinzufügen' }).click();
   }
@@ -237,6 +240,7 @@ test('behält den gewerteten Stand bei einem ausdrücklich vorzeitigen Partieend
 });
 
 test('schließt alle regulären Rundenspielpläne ab und bietet danach keine nächste Runde an', async ({ page }) => {
+  test.setTimeout(90_000);
   for (const [playerCount, roundCount] of [[3, 20], [4, 15], [5, 12], [6, 10]]) {
     await startGameWithPlayers(page, playerCount);
 
@@ -525,4 +529,94 @@ test('erlaubt zwei Wolken und insgesamt drei Sonderkarten mit Hexe', async ({ pa
   await expect(addBomb).toBeDisabled();
   await expect(page.getByText('Wolken ausgespielt: 2 von 2')).toBeVisible();
   await expect(page.getByText('Sonderkarten-Einsätze: 3 von 3 in dieser Stichrunde.')).toBeVisible();
+});
+
+test('bewahrt mehrere unabhängige Partien und zeigt abgeschlossene Partien in der Sammlung', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await scoreCurrentRound(page, 1);
+  await page.getByRole('button', { name: 'Partie vorzeitig beenden' }).click();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await expect(page.getByRole('article')).toContainText('Abgeschlossen · vorzeitig nach Stichrunde 1');
+
+  await page.getByRole('button', { name: 'Neue Partie' }).click();
+  await fillNames(page, ['Dora', 'Erik', 'Fina']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', { Dora: 1, Erik: 0, Fina: 0 });
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+
+  await expect(page.getByRole('article')).toHaveCount(2);
+  await expect(page.getByRole('article').filter({ hasText: 'Ada, Bela, Cora' })).toContainText('Abgeschlossen');
+  await expect(page.getByRole('article').filter({ hasText: 'Dora, Erik, Fina' })).toContainText('Offen · Stichrunde 1 von 20 · Vorhersagen offen');
+  await page.reload();
+  await expect(page.getByRole('article')).toHaveCount(2);
+  await expect(page.getByRole('article').filter({ hasText: 'Ada, Bela, Cora' })).toContainText('Abgeschlossen');
+  await page.getByRole('button', { name: 'Partie öffnen: Ada, Bela, Cora' }).click();
+  await expect(page.getByText('Partie vorzeitig beendet')).toBeVisible();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await page.getByRole('button', { name: 'Partie öffnen: Dora, Erik, Fina' }).click();
+  await expect(page.getByRole('heading', { name: 'Vorhersagen' })).toBeVisible();
+  await expect(page.getByLabel('Dora')).toHaveValue('1');
+});
+
+test('stellt Vorhersagen und Ergebniseingaben nach dem Neuladen mit demselben Geber wieder her', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByLabel('Vampir').uncheck();
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  const dealer = await page.locator('.turn-item').filter({ hasText: 'Geber' }).locator('strong').innerText();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), 'label', { Ada: 1, Bela: 0, Cora: 0 });
+  await page.reload();
+
+  await expect(page.getByRole('heading', { name: 'Eure Wizard-Partien' })).toBeVisible();
+  await page.getByRole('button', { name: 'Partie öffnen: Ada, Bela, Cora' }).click();
+  await expect(page.locator('.turn-item').filter({ hasText: 'Geber' }).locator('strong')).toHaveText(dealer);
+  await expect(page.getByLabel('Ada')).toHaveValue('1');
+  await expect(page.getByRole('region', { name: 'Vereinbarte Einstellungen' })).not.toContainText('Vampir');
+  await page.getByRole('button', { name: 'Vorhersagen bestätigen' }).click();
+  await fillByRowName(page.locator('.prediction-list .entry-row'), '.score-name strong', { Ada: 0, Bela: 1, Cora: 0 });
+  await page.reload();
+
+  await page.getByRole('button', { name: 'Partie öffnen: Ada, Bela, Cora' }).click();
+  await expect(page.locator('.turn-item').filter({ hasText: 'Geber' }).locator('strong')).toHaveText(dealer);
+  await expect(page.getByLabel('Gewonnene Stiche für Bela')).toHaveValue('1');
+  await expect(page.getByRole('region', { name: 'Vereinbarte Einstellungen' })).not.toContainText('Vampir');
+});
+
+test('löscht eine Partie erst nach Bestätigung und lässt abgebrochene Löschungen bestehen', async ({ page }) => {
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+  await page.getByRole('button', { name: 'Neue Partie' }).click();
+  await fillNames(page, ['Dora', 'Erik', 'Fina']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await page.getByRole('button', { name: 'Zur Partienübersicht' }).click();
+
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await page.getByRole('button', { name: 'Partie Ada, Bela, Cora löschen' }).click();
+  await expect(page.getByRole('article')).toHaveCount(2);
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Partie Ada, Bela, Cora löschen' }).click();
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(page.getByRole('article')).toContainText('Dora, Erik, Fina');
+  await page.reload();
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(page.getByRole('article')).toContainText('Dora, Erik, Fina');
+});
+
+test('meldet einen Fehler, wenn der Browser den Speicherzugriff verweigert', async ({ page }) => {
+  await page.addInitScript(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'wizard-punktezahler.partiensammlung.v1') throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      return setItem.call(this, key, value);
+    };
+  });
+  await page.goto('/');
+  await fillNames(page, ['Ada', 'Bela', 'Cora']);
+  await page.getByRole('button', { name: 'Partie starten' }).click();
+  await expect(page.getByRole('alert')).toContainText('Die Partie konnte nicht im Browser gespeichert werden');
 });
